@@ -84,10 +84,35 @@ export function AlbumPanel({
     );
   }, [q.data, category, school]);
 
-  const winners = useMemo(
-    () => (q.data?.photos ?? []).filter(awarded),
-    [q.data, awarded],
-  );
+  /** Every prize, whichever shape it took. A story can win an award too, and
+   * leaving it out of the winners band meant an album whose only prizes were
+   * stories showed no winners at all (owner 2026-08-25). */
+  const winners = useMemo(() => {
+    const live = new Set(q.data?.award_categories ?? []);
+    const fromWall = (q.data?.photos ?? [])
+      .filter(awarded)
+      .map((p) => ({
+        key: p.upload_ref,
+        award: p.award_category,
+        thumb: p.thumb_url,
+        school: p.institution_name,
+        title: p.caption,
+        openRef: p.upload_ref,
+        storyId: "",
+      }));
+    const fromStories = (q.data?.stories ?? [])
+      .filter((st) => st.award_category && live.has(st.award_category))
+      .map((st) => ({
+        key: `story-${st.id}`,
+        award: st.award_category,
+        thumb: st.photos[0]?.thumb_url ?? "",
+        school: st.institution_name,
+        title: st.title,
+        openRef: "",
+        storyId: st.id,
+      }));
+    return [...fromWall, ...fromStories];
+  }, [q.data, awarded]);
 
   // Photo-story entries render as ONE unit each (title + frames in order).
   // A story whose category was removed from the campaign must not leak here,
@@ -126,7 +151,24 @@ export function AlbumPanel({
   }, [openPhoto, openIdx, photos]);
 
   const campaign = q.data?.campaign ?? null;
-  const total = q.data?.photos.length ?? 0;
+  // The wall is not the album: a story's frames are approved photographs too,
+  // and counting only the wall told an album made entirely of stories that it
+  // held nothing (owner 2026-08-25).
+  const wallTotal = q.data?.photos.length ?? 0;
+  const total =
+    q.data?.totals?.photos ??
+    wallTotal +
+      (q.data?.stories ?? []).reduce((n, st) => n + st.photos.length, 0);
+  const schoolCount =
+    q.data?.totals?.schools ?? q.data?.institutions.length ?? 0;
+  /** Photographs filed under a category, wall and stories alike. */
+  const countIn = (cat: string): number =>
+    (q.data?.photos ?? []).filter(
+      (p) => p.category === cat || p.award_category === cat,
+    ).length +
+    (q.data?.stories ?? [])
+      .filter((st) => st.category === cat || st.award_category === cat)
+      .reduce((n, st) => n + st.photos.length, 0);
   const schoolOptions = [
     { value: "", label: t("All schools") },
     ...(q.data?.institutions ?? []).map((i) => ({
@@ -189,10 +231,71 @@ export function AlbumPanel({
                   {campaign.title}
                 </h1>
                 <p className="font-tabular text-xs text-muted-foreground">
-                  {total} {t("photos")} · {q.data?.institutions.length}{" "}
-                  {t("schools")}
+                  {total} {total === 1 ? t("photo") : t("photos")} ·{" "}
+                  {schoolCount} {schoolCount === 1 ? t("school") : t("schools")}
+                  {stories.length
+                    ? ` · ${stories.length} ${stories.length === 1 ? t("story") : t("stories")}`
+                    : ""}
                 </p>
               </div>
+
+              {/* Prizes lead the album: the first thing a visitor wants is
+                  who won (owner 2026-08-25). A winner may be a single
+                  photograph or a whole story. */}
+              {winners.length > 0 ? (
+                <div
+                  className="border-b border-border px-4 py-3 sm:px-5"
+                  data-testid="winners-strip"
+                >
+                  <p className="pb-2 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {t("Prize winners")}
+                  </p>
+                  <div className="flex gap-3 overflow-x-auto pb-1">
+                    {winners.map((w) => (
+                      <button
+                        key={w.key}
+                        type="button"
+                        data-testid={`winner-${w.key}`}
+                        onClick={() => {
+                          setCategory("");
+                          setSchool("");
+                          if (w.openRef) setOpenRef(w.openRef);
+                          else
+                            document
+                              .getElementById(`story-${w.storyId}`)
+                              ?.scrollIntoView({ block: "center" });
+                        }}
+                        className="flex w-36 shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-card text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-40"
+                      >
+                        {w.thumb ? (
+                          <img
+                            src={w.thumb}
+                            alt={w.title || w.school}
+                            loading="lazy"
+                            className="aspect-[4/3] w-full object-cover"
+                          />
+                        ) : (
+                          <span className="aspect-[4/3] w-full bg-muted" />
+                        )}
+                        <div className="flex flex-col gap-0.5 px-2.5 py-2">
+                          <span className="flex items-center gap-1 text-[0.6875rem] font-medium text-primary">
+                            <Award aria-hidden="true" className="h-3 w-3" />
+                            <span className="truncate">{w.award}</span>
+                          </span>
+                          <span className="truncate text-xs font-medium">
+                            {w.title || w.school}
+                          </span>
+                          {w.title ? (
+                            <span className="truncate text-[0.6875rem] text-muted-foreground">
+                              {w.school}
+                            </span>
+                          ) : null}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {/* Photo stories first: they are entries, not wall tiles, so
                   they read best before the endless drift begins. */}
@@ -209,7 +312,8 @@ export function AlbumPanel({
                     {stories.map((s) => (
                       <li
                         key={s.id}
-                        className="rounded-lg border border-border bg-card p-2.5 shadow-sm"
+                        id={`story-${s.id}`}
+                        className="scroll-mt-24 rounded-lg border border-border bg-card p-2.5 shadow-sm"
                         data-testid={`album-story-${s.id}`}
                       >
                         <div className="flex flex-wrap items-center gap-1.5 pb-2">
@@ -256,61 +360,13 @@ export function AlbumPanel({
               ) : null}
 
               {/* Prize winners lead: they are the editorial top of the album. */}
-              {winners.length > 0 ? (
-                <div
-                  aria-label={t("Award winners")}
-                  className="border-b border-border px-4 py-3 sm:px-5"
-                  data-testid="winners-strip"
-                >
-                  <p className="pb-2 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    {t("Prize winners")}
-                  </p>
-                  <div className="flex gap-3 overflow-x-auto pb-1">
-                    {winners.map((w) => (
-                      <button
-                        key={w.upload_ref}
-                        type="button"
-                        onClick={() => {
-                          setCategory("");
-                          setSchool("");
-                          setOpenRef(w.upload_ref);
-                        }}
-                        className="flex w-40 shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-card text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <img
-                          src={w.thumb_url}
-                          alt={w.caption || w.institution_name}
-                          loading="lazy"
-                          className="aspect-[4/3] w-full object-cover"
-                        />
-                        <div className="flex flex-col gap-0.5 px-2.5 py-2">
-                          <span className="flex items-center gap-1 text-[0.6875rem] font-medium text-primary">
-                            <Award aria-hidden="true" className="h-3 w-3" />
-                            {w.award_category}
-                          </span>
-                          <span className="truncate text-xs font-medium">
-                            {w.institution_name}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
               {/* Filters — one control height per row (owner 2026-07-26).
                   Categories scroll rather than wrap on a phone. */}
               <div className="sticky top-[57px] z-10 flex flex-col gap-2 border-b border-border bg-card px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-5">
                 <div className="flex items-center gap-2 overflow-x-auto sm:contents">
                   {chip("", t("All"), total)}
                   {(q.data?.award_categories ?? []).map((cat) =>
-                    chip(
-                      cat,
-                      cat,
-                      (q.data?.photos ?? []).filter(
-                        (p) => p.category === cat || p.award_category === cat,
-                      ).length,
-                    ),
+                    chip(cat, cat, countIn(cat)),
                   )}
                 </div>
                 <div className="w-full sm:ml-auto sm:w-56">
@@ -326,7 +382,9 @@ export function AlbumPanel({
               {/* The wall. */}
               {photos.length === 0 ? (
                 <p className="px-4 py-14 text-center text-sm text-muted-foreground">
-                  {t("No photos match this filter.")}
+                  {stories.length > 0 && wallTotal === 0
+                    ? t("Every approved photo is part of a story above.")
+                    : t("No photo matches this filter.")}
                 </p>
               ) : (
                 <div className="py-4" data-testid="album-grid">

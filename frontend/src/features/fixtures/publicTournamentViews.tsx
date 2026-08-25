@@ -178,3 +178,78 @@ export function GroupTable({
     </div>
   );
 }
+
+/** The view switcher, inside the board rather than a tab attached above it —
+ * one section means one box (owner 2026-08-25). */
+export function Segment({
+  active,
+  onClick,
+  label,
+  count,
+  testid,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count?: number;
+  testid: string;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      data-testid={testid}
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[0.8125rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        active
+          ? "bg-card text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {label}
+      {count != null ? (
+        <span className="font-tabular text-[0.625rem] text-muted-foreground">
+          {count}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+/** The sport filter: a chip row, not a second set of tabs. */
+export function Chip({
+  active,
+  onClick,
+  label,
+  count,
+  testid,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count?: number;
+  testid: string;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      data-testid={testid}
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        active
+          ? "border-primary/40 bg-primary/10 text-primary"
+          : "border-border text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {label}
+      {count != null ? (
+        <span className="font-tabular text-[0.625rem] opacity-70">{count}</span>
+      ) : null}
+    </button>
+  );
+}

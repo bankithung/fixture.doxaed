@@ -49,7 +49,7 @@ export function TallyGrid({
     "w-44 min-w-44 max-w-44 sm:w-64 sm:min-w-64 sm:max-w-64 lg:w-80 lg:min-w-80 lg:max-w-80";
 
   return (
-    <div className="-mx-4 overflow-x-auto sm:mx-0">
+    <div className="-mx-3 overflow-x-auto sm:mx-0">
       <table
         data-testid="tally-grid"
         className="w-full min-w-[52rem] border-separate border-spacing-0 text-sm"

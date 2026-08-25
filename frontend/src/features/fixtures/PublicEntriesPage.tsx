@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Download, Printer, Search } from "lucide-react";
@@ -11,7 +11,7 @@ import { PublicViewerHeader } from "@/features/live/PublicViewerHeader";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { Bookmark } from "./publicTournamentViews";
+import { Chip } from "./publicTournamentViews";
 import {
   buildBands,
   buildColumns,
@@ -29,8 +29,7 @@ import {
  * The match centre answers "what is being played" and Standings answers "who
  * is winning". Neither answers the question a parent, a coach and a visiting
  * school ask first: **is my school in this, and in which events** (owner
- * 2026-08-22). Reading that off the fixture meant scrolling 91 rows and
- * remembering; here it is one grid — schools down, competitions across.
+ * 2026-08-22).
  *
  * **It reads ENTRIES, not fixtures**, so it is right the moment a school
  * registers, before any draw exists, and it cannot drop a school whose
@@ -39,12 +38,13 @@ import {
  * **A cell carries the COUNT, not just a tick.** A school with two pairs in
  * Open Boys Doubles has entered twice, and a tick would flatten that into the
  * same mark as one entry — which is exactly the number a coach is counting.
+ * Not entered is a quiet dash: a red cross in two thirds of the grid is alarm
+ * colour for the ordinary case of a school not doing a sport.
  *
- * **Not entered is quiet, not an error.** A red cross in every empty cell (the
- * shape the reference sketch used) fills two thirds of the grid with alarm
- * colour for the ordinary case of a school not doing a sport. The ticks carry
- * the pattern; the gaps are a muted dash, and the row and column totals say
- * the same thing in numbers for anyone who cannot see the pattern at all.
+ * **It is ONE section** (owner 2026-08-25): heading, totals, filters and the
+ * sheet live in the same panel, and every number on screen — row totals, the
+ * column footer, the CSV — is counted from the columns CURRENTLY VISIBLE, so a
+ * filtered board cannot contradict itself.
  */
 
 /** A grid cell: the entry count, or the quiet gap. */
@@ -61,7 +61,7 @@ function Cell({
 }): React.ReactElement {
   if (count <= 0) {
     return (
-      <td className="border-l border-border/60 px-2 py-2 text-center align-middle">
+      <td className="border-b border-l border-border/60 px-2 py-2 text-center align-middle transition-colors group-hover:bg-accent/60">
         <span className="sr-only">
           {t("{school} is not entered in {competition}")
             .replace("{school}", school)
@@ -75,7 +75,7 @@ function Cell({
   }
   return (
     <td
-      className="border-l border-border/60 bg-success-muted/40 px-2 py-2 text-center align-middle"
+      className="border-b border-l border-border/60 bg-success-muted/40 px-2 py-2 text-center align-middle transition-colors group-hover:bg-accent/60"
       data-testid="entry-cell"
     >
       <span className="sr-only">
@@ -105,37 +105,9 @@ function Cell({
   );
 }
 
-/** The legend: every column code spelled out. A code is only readable with
- * one, and the counts beside it say how big each competition is. */
-function Legend({
-  columns,
-}: {
-  columns: MatrixColumn[];
-}): React.ReactElement {
-  return (
-    <div className="flex flex-wrap gap-x-5 gap-y-2" data-testid="entries-legend">
-      {columns.map((c) => (
-        <div key={c.leaf_key} className="flex items-center gap-2 text-xs">
-          <span className="rounded bg-primary/10 px-1.5 py-0.5 font-tabular text-[0.6875rem] font-semibold text-primary">
-            {c.code}
-          </span>
-          <span className="text-muted-foreground">
-            <span className="text-foreground">{c.title}</span>
-            {" · "}
-            <span className="font-tabular">
-              {c.schools} {c.schools === 1 ? t("school") : t("schools")}
-            </span>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function PublicEntriesPage(): React.ReactElement {
   const { slug = "", id = "" } = useParams();
   const [params, setParams] = useSearchParams();
-  const [search, setSearch] = useState("");
 
   const q = useQuery({
     queryKey: ["public-entries", slug, id],
@@ -159,8 +131,8 @@ export function PublicEntriesPage(): React.ReactElement {
   const bands = useMemo(() => buildBands(columns), [columns]);
   const allRows = useMemo(() => q.data?.institutions ?? [], [q.data]);
 
-  // Sport + sort ride the URL so a filtered board is shareable, exactly like
-  // the match centre's scope. An unknown value falls back to everything.
+  // Sport, sort AND the search ride the URL, so a filtered board is shareable
+  // exactly as it looks. An unknown value falls back to everything.
   const sportParam = params.get("sport") ?? "";
   const sport = bands.some((b) => b.sportKey === sportParam) ? sportParam : "";
   const sortParam = params.get("sort") ?? "";
@@ -169,6 +141,7 @@ export function PublicEntriesPage(): React.ReactElement {
   )
     ? (sortParam as SortKey)
     : "name";
+  const search = params.get("q") ?? "";
 
   const setParam = (next: Record<string, string | null>): void => {
     const p = new URLSearchParams(params);
@@ -209,9 +182,7 @@ export function PublicEntriesPage(): React.ReactElement {
     URL.revokeObjectURL(url);
   };
 
-  /** Entries a row holds inside the columns currently on screen — the number
-   * the row's own total must show, or a sport filter would report the whole
-   * tournament's count beside two visible ticks. */
+  /** Entries a row holds inside the columns currently on screen. */
   const shownTotals = (
     row: PublicEntryInstitution,
   ): { teams: number; comps: number } => {
@@ -227,8 +198,16 @@ export function PublicEntriesPage(): React.ReactElement {
     return { teams, comps };
   };
 
+  /** Schools entered in one competition, counted from the ROWS ON SCREEN so
+   * the footer can never disagree with the rows above it. */
+  const columnSchools = (col: MatrixColumn): number =>
+    rows.reduce((n, r) => n + (cellCount(r, col.leaf_key) > 0 ? 1 : 0), 0);
+
+  const stick =
+    "w-40 min-w-40 max-w-40 sm:w-64 sm:min-w-64 sm:max-w-64 lg:w-80 lg:min-w-80 lg:max-w-80";
+
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col print-doc">
       <PublicViewerHeader
         slug={slug}
         id={id}
@@ -236,83 +215,115 @@ export function PublicEntriesPage(): React.ReactElement {
         active="entries"
         connected={false}
       />
-      <main className="flex w-full flex-1 flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
-        {q.isLoading ? (
-          <div
-            aria-busy="true"
-            className="h-64 animate-pulse rounded-xl bg-muted/40"
-          />
-        ) : q.isError || !q.data ? (
-          <p
-            role="alert"
-            className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground"
-          >
-            {t("These entries are not available.")}
-          </p>
-        ) : allRows.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card p-8 text-center">
-            <p className="text-sm font-medium">{t("No schools yet.")}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t("Schools appear here as soon as they register.")}
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* What the whole board says in three numbers, then per sport —
-                the summary a viewer reads before hunting for their school. */}
-            <section
-              data-testid="entries-summary"
-              className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-xl border border-border bg-card px-5 py-4 shadow-sm"
-            >
-              <div className="flex flex-col">
-                <span className="font-tabular text-2xl font-semibold">
-                  {q.data.totals.schools}
+      <main className="flex w-full flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+        {/* ONE section: heading, totals, filters and the sheet are one board. */}
+        <section className="flex w-full flex-col gap-4 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-5">
+          <header className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
+                {t("Schools")}
+              </h1>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                <span className="hidden print:inline">
+                  {tournamentName}
+                  {" · "}
                 </span>
-                <span className="text-xs text-muted-foreground">
-                  {t("Schools")}
-                </span>
-              </div>
-              <div className="flex flex-col">
-                <span className="font-tabular text-2xl font-semibold">
-                  {q.data.totals.competitions}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {t("Competitions")}
-                </span>
-              </div>
-              <div className="flex flex-col">
-                <span className="font-tabular text-2xl font-semibold">
-                  {q.data.totals.teams}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {t("Entries")}
-                </span>
-              </div>
-              <div className="ml-auto flex flex-wrap gap-2">
-                {totalsBySport.map((s) => (
-                  <span
-                    key={s.sportKey}
-                    data-testid={`entries-sport-total-${s.sportKey}`}
-                    className="flex items-baseline gap-1.5 rounded-lg bg-muted px-3 py-1.5 text-xs"
-                  >
-                    <span className="font-medium">{s.sportName}</span>
-                    <span className="font-tabular text-muted-foreground">
-                      {s.schools} {t("schools")} · {s.teams} {t("entries")}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            </section>
+                {t("Which competitions each school entered")}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 print:hidden">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={downloadCsv}
+                data-testid="entries-csv"
+              >
+                <Download className="mr-1.5 h-4 w-4" />
+                {t("CSV")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.print()}
+                data-testid="entries-print"
+              >
+                <Printer className="mr-1.5 h-4 w-4" />
+                {t("Print / PDF")}
+              </Button>
+            </div>
+          </header>
 
-            {/* Sport bookmarks sit ON the sheet, the same device the standings
-                board uses, so the two public tabs read as one product. */}
-            <div className="flex flex-col print:block">
+          {q.isLoading ? (
+            <div
+              aria-busy="true"
+              className="h-64 animate-pulse rounded-lg bg-muted/40"
+            />
+          ) : q.isError || !q.data ? (
+            <p
+              role="alert"
+              className="rounded-lg border border-border p-6 text-center text-sm text-muted-foreground"
+            >
+              {t("These entries are not available.")}
+            </p>
+          ) : allRows.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border p-8 text-center">
+              <p className="text-sm font-medium">{t("No schools yet.")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("Schools appear here as soon as they register.")}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div
+                data-testid="entries-summary"
+                className="flex flex-wrap items-center gap-x-6 gap-y-3 border-y border-border py-3"
+              >
+                <div className="flex flex-col">
+                  <span className="font-tabular text-xl font-semibold sm:text-2xl">
+                    {q.data.totals.schools}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("Schools")}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-tabular text-xl font-semibold sm:text-2xl">
+                    {q.data.totals.competitions}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("Competitions")}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-tabular text-xl font-semibold sm:text-2xl">
+                    {q.data.totals.teams}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("Entries")}
+                  </span>
+                </div>
+                <div className="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
+                  {totalsBySport.map((s) => (
+                    <span
+                      key={s.sportKey}
+                      data-testid={`entries-sport-total-${s.sportKey}`}
+                      className="flex items-baseline gap-1.5 rounded-lg bg-muted px-2.5 py-1 text-xs"
+                    >
+                      <span className="font-medium">{s.sportName}</span>
+                      <span className="font-tabular text-muted-foreground">
+                        {s.schools} {t("schools")} · {s.teams} {t("entries")}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
               <div
                 role="tablist"
                 aria-label={t("Sports")}
-                className="flex flex-wrap items-end gap-1 overflow-x-auto px-2 print:hidden"
+                className="flex flex-wrap items-center gap-1.5 print:hidden"
               >
-                <Bookmark
+                <Chip
                   testid="entries-sport-all"
                   active={!sport}
                   onClick={() => setParam({ sport: null })}
@@ -320,7 +331,7 @@ export function PublicEntriesPage(): React.ReactElement {
                   count={columns.length}
                 />
                 {bands.map((b) => (
-                  <Bookmark
+                  <Chip
                     key={b.sportKey}
                     testid={`entries-sport-pick-${b.sportKey}`}
                     active={sport === b.sportKey}
@@ -331,228 +342,229 @@ export function PublicEntriesPage(): React.ReactElement {
                 ))}
               </div>
 
-              <div className="flex flex-col gap-4 rounded-xl rounded-tl-none border border-border bg-card p-4 shadow-sm sm:p-5">
-                <div className="flex flex-wrap items-center gap-3 print:hidden">
-                  <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
-                    <Search
-                      aria-hidden="true"
-                      className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                    />
-                    <Input
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      aria-label={t("Search schools")}
-                      placeholder={t("Search schools")}
-                      data-testid="entries-search"
-                      className="pl-8"
-                    />
-                  </div>
-                  <Select
-                    size="sm"
-                    value={sort}
-                    onChange={(v) => setParam({ sort: v === "name" ? null : v })}
-                    aria-label={t("Sort schools")}
-                    className="w-44"
-                    options={[
-                      { value: "name", label: t("School name") },
-                      { value: "entries", label: t("Most entries") },
-                      { value: "competitions", label: t("Most competitions") },
-                    ]}
+              <div className="flex flex-wrap items-center gap-2 print:hidden sm:gap-3">
+                <div className="relative min-w-[10rem] flex-1 sm:max-w-xs">
+                  <Search
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
                   />
-                  <span
-                    className="font-tabular text-xs text-muted-foreground"
-                    data-testid="entries-row-count"
-                  >
-                    {rows.length}{" "}
-                    {rows.length === 1 ? t("school") : t("schools")}
-                  </span>
-                  <div className="ml-auto flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={downloadCsv}
-                      data-testid="entries-csv"
-                    >
-                      <Download className="mr-1.5 h-4 w-4" />
-                      {t("CSV")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => window.print()}
-                      data-testid="entries-print"
-                    >
-                      <Printer className="mr-1.5 h-4 w-4" />
-                      {t("Print / PDF")}
-                    </Button>
-                  </div>
+                  <Input
+                    value={search}
+                    onChange={(e) => setParam({ q: e.target.value || null })}
+                    aria-label={t("Search schools")}
+                    placeholder={t("Search schools")}
+                    data-testid="entries-search"
+                    className="pl-8"
+                  />
                 </div>
+                <Select
+                  size="sm"
+                  value={sort}
+                  onChange={(v) => setParam({ sort: v === "name" ? null : v })}
+                  aria-label={t("Sort schools")}
+                  className="w-40"
+                  options={[
+                    { value: "name", label: t("School name") },
+                    { value: "entries", label: t("Most entries") },
+                    { value: "competitions", label: t("Most competitions") },
+                  ]}
+                />
+                <span
+                  className="font-tabular text-xs text-muted-foreground"
+                  data-testid="entries-row-count"
+                >
+                  {rows.length} {rows.length === 1 ? t("school") : t("schools")}
+                </span>
+              </div>
 
-                {rows.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
-                    {t("No school matches that search.")}
-                  </p>
-                ) : (
-                  /* A matrix stays a matrix on a phone: it scrolls sideways
-                     with the school column pinned, because collapsing it to
-                     cards would destroy the one thing a grid is for. */
-                  <div className="-mx-4 overflow-x-auto sm:mx-0">
-                    <table
-                      data-testid="entries-matrix"
-                      className="w-full min-w-[46rem] border-separate border-spacing-0 text-sm"
-                    >
-                      <caption className="sr-only">
-                        {t(
-                          "Which competitions each school has entered, with the number of entries in each",
-                        )}
-                      </caption>
-                      <thead>
-                        <tr>
-                          {/* Bounded, not natural width: left to size itself
-                              the school names take the whole of a phone and
-                              the first tick sits off-screen, so the grid opens
-                              on no data at all. */}
+              {rows.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  {t("No school matches that search.")}
+                </p>
+              ) : (
+                /* A matrix stays a matrix on a phone: it scrolls sideways with
+                   the school column pinned, because collapsing it to cards
+                   would destroy the one thing a grid is for. */
+                <div className="-mx-3 overflow-x-auto sm:mx-0">
+                  <table
+                    data-testid="entries-matrix"
+                    className="w-full min-w-[46rem] border-separate border-spacing-0 text-sm"
+                  >
+                    <caption className="sr-only">
+                      {t(
+                        "Which competitions each school has entered, with the number of entries in each",
+                      )}
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th
+                          rowSpan={2}
+                          scope="col"
+                          className={cn(
+                            "sticky left-0 z-10 border-b border-r border-border bg-card px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+                            stick,
+                          )}
+                        >
+                          {t("School")}
+                        </th>
+                        {shownBands.map((b) => (
                           <th
-                            rowSpan={2}
-                            scope="col"
-                            className="sticky left-0 z-20 w-52 min-w-52 max-w-52 border-b border-r border-border bg-card px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:w-72 sm:min-w-72 sm:max-w-72 lg:w-[23rem] lg:min-w-[23rem] lg:max-w-[23rem]"
+                            key={b.sportKey}
+                            colSpan={b.columns.length}
+                            scope="colgroup"
+                            data-testid={`entries-band-${b.sportKey}`}
+                            className="border-b border-l border-border bg-primary/10 px-2 py-1.5 text-center text-xs font-semibold text-primary"
                           >
-                            {t("School")}
+                            {b.sportName}
                           </th>
-                          {shownBands.map((b) => (
-                            <th
-                              key={b.sportKey}
-                              colSpan={b.columns.length}
-                              scope="colgroup"
-                              data-testid={`entries-band-${b.sportKey}`}
-                              className="border-b border-l border-border bg-primary/10 px-2 py-1.5 text-center text-xs font-semibold text-primary"
-                            >
-                              {b.sportName}
-                            </th>
-                          ))}
+                        ))}
+                        <th
+                          rowSpan={2}
+                          scope="col"
+                          className="border-b border-l border-border bg-card px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                        >
+                          {t("Entries")}
+                        </th>
+                      </tr>
+                      <tr>
+                        {shownColumns.map((c) => (
                           <th
-                            rowSpan={2}
+                            key={c.leaf_key}
                             scope="col"
-                            className="border-b border-l border-border bg-card px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                            title={`${c.sport_name} · ${c.title}`}
+                            data-testid={`entries-col-${c.leaf_key}`}
+                            className="border-b border-l border-border bg-muted/50 px-2 py-2 text-center font-tabular text-xs font-semibold"
                           >
-                            {t("Entries")}
+                            {c.code}
+                            <span className="sr-only">
+                              {" "}
+                              {c.sport_name} {c.title}
+                            </span>
                           </th>
-                        </tr>
-                        <tr>
-                          {shownColumns.map((c) => (
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, i) => {
+                        const totals = shownTotals(row);
+                        /* The stripe is repeated on the pinned cell: it needs
+                           an opaque background of its own, and leaving it
+                           plain breaks the banding down the one column a
+                           reader uses to keep their place. */
+                        const stripe = i % 2 ? "bg-muted/20" : "bg-card";
+                        return (
+                          <tr
+                            key={row.id}
+                            data-testid={`entries-row-${row.id}`}
+                            className={cn("group", i % 2 && "bg-muted/20")}
+                          >
                             <th
-                              key={c.leaf_key}
-                              scope="col"
-                              title={`${c.sport_name} · ${c.title}`}
-                              data-testid={`entries-col-${c.leaf_key}`}
-                              className="border-b border-l border-border bg-muted/50 px-2 py-2 text-center font-tabular text-xs font-semibold"
-                            >
-                              {c.code}
-                              <span className="sr-only">
-                                {" "}
-                                {c.sport_name} {c.title}
-                              </span>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((row, i) => {
-                          const totals = shownTotals(row);
-                          return (
-                            <tr
-                              key={row.id}
-                              data-testid={`entries-row-${row.id}`}
+                              scope="row"
                               className={cn(
-                                "group",
-                                i % 2 ? "bg-muted/20" : undefined,
+                                "sticky left-0 z-[5] border-b border-r border-border px-3 py-2 text-left font-normal transition-colors group-hover:bg-accent",
+                                stripe,
+                                stick,
                               )}
                             >
-                              <th
-                                scope="row"
-                                className="sticky left-0 z-10 w-52 min-w-52 max-w-52 border-b border-r border-border bg-card px-3 py-2 text-left font-normal sm:w-72 sm:min-w-72 sm:max-w-72 lg:w-[23rem] lg:min-w-[23rem] lg:max-w-[23rem]"
+                              <Link
+                                to={routes.publicSchool(slug, id, row.id)}
+                                title={row.name}
+                                className="flex items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               >
-                                <Link
-                                  to={routes.publicSchool(slug, id, row.id)}
-                                  className="flex items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                >
-                                  <TeamCrest
-                                    src={row.crest}
-                                    name={row.name}
-                                    size="md"
-                                  />
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-sm font-medium group-hover:text-primary">
-                                      {row.name}
-                                    </span>
-                                    {row.region ? (
-                                      <span className="block truncate text-[0.6875rem] text-muted-foreground">
-                                        {row.region}
-                                      </span>
-                                    ) : null}
-                                  </span>
-                                </Link>
-                              </th>
-                              {shownColumns.map((c) => (
-                                <Cell
-                                  key={c.leaf_key}
-                                  count={cellCount(row, c.leaf_key)}
-                                  school={row.name}
-                                  competition={`${c.sport_name} ${c.title}`}
-                                  names={row.entries[c.leaf_key]?.names ?? []}
+                                <TeamCrest
+                                  src={row.crest}
+                                  name={row.name}
+                                  size="md"
                                 />
-                              ))}
-                              <td className="border-b border-l border-border px-3 py-2 text-right">
-                                <span className="font-tabular text-sm font-semibold">
-                                  {totals.teams}
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-medium group-hover:text-primary">
+                                    {row.name}
+                                  </span>
+                                  {row.region ? (
+                                    <span className="block truncate text-[0.6875rem] text-muted-foreground">
+                                      {row.region}
+                                    </span>
+                                  ) : null}
                                 </span>
-                                <span className="block font-tabular text-[0.6875rem] text-muted-foreground">
-                                  {totals.comps}{" "}
-                                  {totals.comps === 1
-                                    ? t("event")
-                                    : t("events")}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <th
-                            scope="row"
-                            className="sticky left-0 z-10 w-52 min-w-52 max-w-52 border-r border-border bg-card px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:w-72 sm:min-w-72 sm:max-w-72 lg:w-[23rem] lg:min-w-[23rem] lg:max-w-[23rem]"
-                          >
-                            {t("Schools entered")}
-                          </th>
-                          {shownColumns.map((c) => (
-                            <td
-                              key={c.leaf_key}
-                              data-testid={`entries-total-${c.leaf_key}`}
-                              className="border-l border-border px-2 py-2 text-center font-tabular text-xs text-muted-foreground"
-                            >
-                              {c.schools}
+                              </Link>
+                            </th>
+                            {shownColumns.map((c) => (
+                              <Cell
+                                key={c.leaf_key}
+                                count={cellCount(row, c.leaf_key)}
+                                school={row.name}
+                                competition={`${c.sport_name} ${c.title}`}
+                                names={row.entries[c.leaf_key]?.names ?? []}
+                              />
+                            ))}
+                            <td className="border-b border-l border-border px-3 py-2 text-right transition-colors group-hover:bg-accent/60">
+                              <span className="font-tabular text-sm font-semibold">
+                                {totals.teams}
+                              </span>
+                              <span className="block font-tabular text-[0.6875rem] text-muted-foreground">
+                                {totals.comps}{" "}
+                                {totals.comps === 1 ? t("event") : t("events")}
+                              </span>
                             </td>
-                          ))}
-                          <td className="border-l border-border px-3 py-2 text-right font-tabular text-xs text-muted-foreground">
-                            {rows.reduce(
-                              (n, r) => n + shownTotals(r).teams,
-                              0,
-                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <th
+                          scope="row"
+                          className={cn(
+                            "sticky left-0 z-[5] border-r border-border bg-card px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+                            stick,
+                          )}
+                        >
+                          {t("Schools entered")}
+                        </th>
+                        {shownColumns.map((c) => (
+                          <td
+                            key={c.leaf_key}
+                            data-testid={`entries-total-${c.leaf_key}`}
+                            className="border-l border-border px-2 py-2 text-center font-tabular text-xs text-muted-foreground"
+                          >
+                            {columnSchools(c)}
                           </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )}
-
-                <div className="border-t border-border pt-3">
-                  <Legend columns={shownColumns} />
+                        ))}
+                        <td className="border-l border-border px-3 py-2 text-right font-tabular text-xs text-muted-foreground">
+                          {rows.reduce((n, r) => n + shownTotals(r).teams, 0)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
+              )}
+
+              <div
+                className="flex flex-wrap gap-x-5 gap-y-2 border-t border-border pt-3"
+                data-testid="entries-legend"
+              >
+                {shownColumns.map((c) => (
+                  <div
+                    key={c.leaf_key}
+                    className="flex items-center gap-2 text-xs"
+                  >
+                    <span className="rounded bg-primary/10 px-1.5 py-0.5 font-tabular text-[0.6875rem] font-semibold text-primary">
+                      {c.code}
+                    </span>
+                    <span className="text-muted-foreground">
+                      <span className="text-foreground">{c.title}</span>
+                      {" · "}
+                      <span className="font-tabular">
+                        {columnSchools(c)}{" "}
+                        {columnSchools(c) === 1 ? t("school") : t("schools")}
+                      </span>
+                    </span>
+                  </div>
+                ))}
               </div>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </section>
       </main>
     </div>
   );

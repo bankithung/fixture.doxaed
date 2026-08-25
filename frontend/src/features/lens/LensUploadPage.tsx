@@ -1015,40 +1015,44 @@ export function LensUploadPage({
                   {ownStatusChip(photo.status)}
                 </DialogDescription>
               </DialogHeader>
-              <img
-                src={photo.url}
-                alt={photo.caption || inStory?.title || t("Uploaded photo")}
-                className="max-h-[50vh] w-full rounded-md object-contain"
-                data-testid="preview-image"
-              />
-
-              {shownPhotos.length > 1 && !previewEditing ? (
-                <div className="flex items-center justify-between gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-testid="preview-prev"
-                    disabled={idx <= 0}
-                    onClick={() => go(-1)}
-                  >
-                    <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-                    {t("Previous")}
-                  </Button>
-                  <span className="font-tabular text-xs text-muted-foreground">
-                    {idx + 1} {t("of")} {shownPhotos.length}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-testid="preview-next"
-                    disabled={idx >= shownPhotos.length - 1}
-                    onClick={() => go(1)}
-                  >
-                    {t("Next")}
-                    <ChevronRight aria-hidden="true" className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : null}
+              {/* The IMAGE is the pager: chevrons sit on it, vertically
+                  centred, wordless — a lightbox, not a form with buttons under
+                  a picture (owner 2026-08-25). */}
+              <div className="relative">
+                <img
+                  src={photo.url}
+                  alt={photo.caption || inStory?.title || t("Uploaded photo")}
+                  className="max-h-[50vh] w-full rounded-md bg-muted object-contain"
+                  data-testid="preview-image"
+                />
+                {shownPhotos.length > 1 && !previewEditing ? (
+                  <>
+                    <button
+                      type="button"
+                      data-testid="preview-prev"
+                      aria-label={t("Previous photo")}
+                      disabled={idx <= 0}
+                      onClick={() => go(-1)}
+                      className="absolute left-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-background/80 text-foreground shadow-sm backdrop-blur transition hover:bg-background disabled:pointer-events-none disabled:opacity-0"
+                    >
+                      <ChevronLeft aria-hidden="true" className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="preview-next"
+                      aria-label={t("Next photo")}
+                      disabled={idx >= shownPhotos.length - 1}
+                      onClick={() => go(1)}
+                      className="absolute right-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-background/80 text-foreground shadow-sm backdrop-blur transition hover:bg-background disabled:pointer-events-none disabled:opacity-0"
+                    >
+                      <ChevronRight aria-hidden="true" className="h-5 w-5" />
+                    </button>
+                    <span className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-background/80 px-2 py-0.5 font-tabular text-[0.6875rem] text-muted-foreground backdrop-blur">
+                      {idx + 1} / {shownPhotos.length}
+                    </span>
+                  </>
+                ) : null}
+              </div>
 
               {!previewEditing ? (
                 <div className="flex flex-col gap-3" data-testid="preview-details">

@@ -913,11 +913,31 @@ class PublicTournamentAlbumView(GenericAPIView):
             .prefetch_related("photos")
             .order_by("-created_at")
         )
+        stories = list(stories_qs)
+        # A story's frames are approved photographs too. Counting only the wall
+        # told an album whose every entry was a story that it held 0 photos
+        # from 0 schools, which is simply false (owner 2026-08-25).
+        story_frames = 0
+        for st in stories:
+            frames = [f for f in st.photos.all() if f.hidden_at is None]
+            story_frames += len(frames)
+            iid = str(st.institution_id)
+            slot = by_inst.setdefault(
+                iid, {"id": iid, "name": st.institution.name, "count": 0}
+            )
+            slot["count"] += len(frames)
         return Response({
             "campaign": {"title": c.title, "tagline": c.tagline},
             "award_categories": list(c.award_categories or []),
             "story_categories": list(c.story_categories or []),
             "institutions": sorted(by_inst.values(), key=lambda r: r["name"]),
             "photos": rows,
-            "stories": [_story_payload(s) for s in stories_qs],
+            "stories": [_story_payload(s) for s in stories],
+            "totals": {
+                "photos": len(rows) + story_frames,
+                "wall_photos": len(rows),
+                "story_photos": story_frames,
+                "stories": len(stories),
+                "schools": len(by_inst),
+            },
         })

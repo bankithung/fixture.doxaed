@@ -238,6 +238,15 @@ export interface PublicAlbum {
   institutions: { id: string; name: string; count: number }[];
   photos: PublicAlbumPhoto[];
   stories: PublicAlbumStory[];
+  /** Album-wide counts INCLUDING story frames: an album whose every entry is a
+   * story still holds photographs from schools. */
+  totals?: {
+    photos: number;
+    wall_photos: number;
+    story_photos: number;
+    stories: number;
+    schools: number;
+  };
 }
 
 const base = (tid: string): string =>

@@ -234,6 +234,14 @@
    order-of-play (PublicSchedulePage's print view) stays B&W-friendly. The
    literal white/black here is deliberate — paper has no dark mode. */
 @media print {
+  /* Every printable board here is a wide table (a fixture sheet, an entries
+     matrix, a medal tally), so paper is landscape by default and the margins
+     are trimmed to give the columns their width (owner 2026-08-25). */
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+
   :root,
   .dark {
     color-scheme: light;
@@ -271,6 +279,22 @@
     min-width: 0 !important;
     width: 100%;
     table-layout: auto;
+  }
+  /* A sticky column is a screen affordance; on paper it just offsets a cell. */
+  .print-doc .sticky {
+    position: static !important;
+  }
+  /* Nothing on paper is a scroll container. */
+  .print-doc .overflow-x-auto,
+  .print-doc .overflow-y-auto,
+  .print-doc .overflow-auto {
+    overflow: visible !important;
+  }
+  /* Shrink the sheet's type so ten competition columns fit the page. */
+  .print-doc table th,
+  .print-doc table td {
+    font-size: 0.6875rem;
+    padding: 2px 4px;
   }
   /* The sheet's column widths are cut for a 62rem screen board, where the two
      name columns are the ones that give. On paper that turned every school

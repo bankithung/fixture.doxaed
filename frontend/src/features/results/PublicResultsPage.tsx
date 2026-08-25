@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/Select";
 import { PublicViewerHeader } from "@/features/live/PublicViewerHeader";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { Chip, Segment } from "@/features/fixtures/publicTournamentViews";
 import { ChampionsView } from "./ChampionsView";
 import { medalColumn } from "./MedalChip";
 import { PointsChart } from "./PointsChart";
@@ -49,81 +50,6 @@ import {
 
 type View = "tally" | "champions" | "students";
 const VIEWS: View[] = ["tally", "champions", "students"];
-
-/** The view switcher, inside the board rather than a tab attached above it —
- * one section means one box (owner 2026-08-25). */
-function Segment({
-  active,
-  onClick,
-  label,
-  count,
-  testid,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count?: number;
-  testid: string;
-}): React.ReactElement {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      data-testid={testid}
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[0.8125rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active
-          ? "bg-card text-foreground shadow-sm"
-          : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {label}
-      {count != null ? (
-        <span className="font-tabular text-[0.625rem] text-muted-foreground">
-          {count}
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
-/** The sport filter: a chip row, not a second set of tabs. */
-function Chip({
-  active,
-  onClick,
-  label,
-  count,
-  testid,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count?: number;
-  testid: string;
-}): React.ReactElement {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      data-testid={testid}
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active
-          ? "border-primary/40 bg-primary/10 text-primary"
-          : "border-border text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {label}
-      {count != null ? (
-        <span className="font-tabular text-[0.625rem] opacity-70">{count}</span>
-      ) : null}
-    </button>
-  );
-}
 
 function Stat({
   value,
@@ -268,8 +194,8 @@ export function PublicResultsPage(): React.ReactElement {
       {/* ONE section (owner 2026-08-25). The heading, the totals, the view
           switcher, the filters and the sheet itself are one board: read across
           four floating cards, a medal tally is four things rather than one. */}
-      <main className="flex w-full flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
-       <section className="flex w-full flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
+      <main className="flex w-full flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+       <section className="flex w-full min-w-0 flex-col gap-4 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-5">
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">

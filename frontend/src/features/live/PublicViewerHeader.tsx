@@ -37,7 +37,13 @@ export function PublicViewerTabs({
     { key: "album", label: t("Photos"), to: `${routes.publicSchedule(slug, id)}?view=album` },
   ];
   return (
-    <nav className="flex gap-1" aria-label={t("Tournament views")}>
+    /* Five tabs do not fit a 360px phone. The ROW scrolls; the page must not,
+       because a public board that slides sideways under a thumb reads as
+       broken (owner 2026-08-25). */
+    <nav
+      className="-mx-4 flex gap-1 overflow-x-auto px-4 sm:mx-0 sm:px-0"
+      aria-label={t("Tournament views")}
+    >
       {tabs.map((tab) => (
         <Link
           key={tab.key}
@@ -45,7 +51,7 @@ export function PublicViewerTabs({
           aria-current={tab.key === active ? "page" : undefined}
           data-testid={`viewer-tab-${tab.key}`}
           className={cn(
-            "rounded-t-md border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+            "shrink-0 whitespace-nowrap rounded-t-md border-b-2 px-2.5 py-2 text-sm font-medium transition-colors sm:px-3",
             tab.key === active
               ? "border-primary text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground",
@@ -78,7 +84,7 @@ export function PublicViewerHeader({
   connected: boolean;
 }): React.ReactElement {
   return (
-    <header className="sticky top-0 z-10 flex flex-col gap-2 border-b border-border bg-card px-4 pt-3 print:hidden sm:px-6">
+    <header className="sticky top-0 z-20 flex w-full max-w-full flex-col gap-2 overflow-x-hidden border-b border-border bg-card px-4 pt-3 print:hidden sm:px-6">
       <div className="flex items-center gap-2">
         <Link
           to={routes.landing()}

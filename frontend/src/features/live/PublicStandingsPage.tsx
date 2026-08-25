@@ -95,7 +95,7 @@ export function PublicStandingsPage(): React.ReactElement {
     scheduleQ.isLoading || (scheduleQ.data !== undefined && standingsQ.isLoading);
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col print-doc">
       <PublicViewerHeader
         slug={slug}
         id={id}
@@ -103,7 +103,7 @@ export function PublicStandingsPage(): React.ReactElement {
         active="standings"
         connected={connected}
       />
-      <main className="flex w-full flex-1 flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
+      <main className="flex w-full min-w-0 flex-1 flex-col gap-6 px-3 py-4 sm:gap-8 sm:px-6 sm:py-6 lg:px-8">
         {loading ? (
           <div aria-busy="true" className="h-48 animate-pulse rounded-xl bg-muted/40" />
         ) : scheduleQ.isError ? (

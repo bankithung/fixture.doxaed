@@ -242,12 +242,26 @@ export function entriesCsv(
     "Competitions",
     "Entries",
   ];
-  const body = rows.map((r) => [
-    esc(r.name),
-    ...columns.map((c) => cellCount(r, c.leaf_key)),
-    r.competition_count,
-    r.team_count,
-  ]);
+  const body = rows.map((r) => {
+    // Counted from the columns PASSED IN: a sport-filtered export that
+    // reported the whole tournament beside two visible cells would contradict
+    // the board it came from.
+    let teams = 0;
+    let comps = 0;
+    for (const c of columns) {
+      const n = cellCount(r, c.leaf_key);
+      if (n > 0) {
+        teams += n;
+        comps += 1;
+      }
+    }
+    return [
+      esc(r.name),
+      ...columns.map((c) => cellCount(r, c.leaf_key)),
+      comps,
+      teams,
+    ];
+  });
   return [head.map(esc).join(","), ...body.map((line) => line.join(","))].join(
     "\n",
   );
