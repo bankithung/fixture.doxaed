@@ -215,6 +215,60 @@ describe("LensUploadPage", () => {
     expect(screen.getByTestId("category-full-hint")).toBeInTheDocument();
   });
 
+  it("keeps the picker after a batch, so a second category is reachable", async () => {
+    mount();
+    await screen.findByTestId("category-picker");
+    await userEvent.upload(screen.getByTestId("file-input"), [
+      new File(["a"], "a.jpg", { type: "image/jpeg" }),
+    ]);
+    await userEvent.click(await screen.findByTestId("confirm-upload-btn"));
+    await waitFor(() => expect(lensApi.upload).toHaveBeenCalled());
+
+    // The finished list is a REPORT, not a mode: the button is still there.
+    expect(await screen.findByTestId("upload-list")).toBeInTheDocument();
+    expect(screen.getByText("Choose photos")).toBeInTheDocument();
+  });
+
+  it("filters your own photos by category, with a count on each", async () => {
+    mount();
+    await screen.findByTestId("own-photo-r1");
+    await userEvent.click(screen.getByTestId("gallery-filter-btn"));
+
+    const list = await screen.findByTestId("gallery-filter-list");
+    expect(within(list).getByTestId("gallery-filter-all")).toHaveTextContent(
+      String(CTX.photos.length),
+    );
+    const first = CTX.photos[0]!.category;
+    await userEvent.click(within(list).getByTestId(`gallery-filter-${first}`));
+
+    // Only that category's photos survive, and the filter is removable.
+    for (const p of CTX.photos) {
+      if (p.category === first) {
+        expect(screen.getByTestId(`own-photo-${p.upload_ref}`)).toBeInTheDocument();
+      } else {
+        expect(screen.queryByTestId(`own-photo-${p.upload_ref}`)).toBeNull();
+      }
+    }
+    expect(screen.getByTestId("gallery-filter-clear")).toBeInTheDocument();
+  });
+
+  it("steps through the photos from inside the preview", async () => {
+    mount();
+    await screen.findByTestId("own-photo-r1");
+    await userEvent.click(screen.getByTestId("preview-r1"));
+    await screen.findByTestId("preview-image");
+
+    if (CTX.photos.length > 1) {
+      expect(screen.getByTestId("preview-prev")).toBeDisabled();
+      await userEvent.click(screen.getByTestId("preview-next"));
+      expect(await screen.findByTestId("preview-image")).toHaveAttribute(
+        "src",
+        CTX.photos[1]!.url,
+      );
+      expect(screen.getByTestId("preview-prev")).toBeEnabled();
+    }
+  });
+
   it("opens an own photo as a preview with an editable caption", async () => {
     mount();
     await screen.findByTestId("own-photo-r1");

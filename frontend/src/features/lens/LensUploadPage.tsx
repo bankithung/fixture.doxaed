@@ -6,6 +6,9 @@ import {
   ArrowLeftRight,
   Camera,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
   Loader2,
   Pencil,
   Trash2,
@@ -147,6 +150,10 @@ export function LensUploadPage({
   const [pvDesc, setPvDesc] = useState("");
   // "" = no category picked yet (campaigns without categories stay on "").
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  // "Your photos" filter: null = everything. A school with 36 photos across
+  // six categories cannot find one by scrolling (owner 2026-08-25).
+  const [galleryCat, setGalleryCat] = useState<string | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
   // Picked photos awaiting confirmation.
   const [picked, setPicked] = useState<PickedPhoto[]>([]);
   // Local draft of the story title/description: used BOTH in the review step
@@ -165,6 +172,20 @@ export function LensUploadPage({
     enabled: Boolean(token),
     retry: false,
   });
+
+  // The open preview's stepper, published by the sheet as it renders so the
+  // key handler can reach a list that is derived further down.
+  const previewGoRef = useRef<((step: number) => void) | null>(null);
+  // Left/right walk the open preview: on a desk the keyboard IS the pager.
+  useEffect(() => {
+    if (previewRef === null || previewEditing) return undefined;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      previewGoRef.current?.(e.key === "ArrowRight" ? 1 : -1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewRef, previewEditing]);
 
   // Release any leftover preview URLs when the page goes away.
   useEffect(() => {
@@ -234,6 +255,20 @@ export function LensUploadPage({
     ? [...story.photos].sort((a, b) => a.position - b.position)
     : [];
   const open = ctx.campaign.is_open;
+  // What "Your photos" is showing, and how many sit under each category —
+  // the count is what makes the filter readable before it is used.
+  const galleryCounts = ctx.photos.reduce<Record<string, number>>((acc, p) => {
+    const key = p.category || "";
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+  const galleryCats = Object.keys(galleryCounts).sort((a, b) =>
+    a.localeCompare(b),
+  );
+  const shownPhotos = galleryCat
+    ? ctx.photos.filter((p) => (p.category || "") === galleryCat)
+    : ctx.photos;
+
   const catLimit = category ? limits[category] : undefined;
   const catUsed = category ? (byCategory[category] ?? 0) : 0;
   const catRemaining = isStoryCat
@@ -477,7 +512,12 @@ export function LensUploadPage({
                     className="w-full"
                     aria-label={t("Photo category")}
                     value={category}
-                    onChange={(v) => setSelectedCat(v || null)}
+                    onChange={(v) => {
+                      setSelectedCat(v || null);
+                      // A new category is a new batch: the previous one's
+                      // report belongs to the category it was uploaded to.
+                      setItems([]);
+                    }}
                     options={categoryOptions}
                   />
                   {category !== "" &&
@@ -509,7 +549,12 @@ export function LensUploadPage({
                   if (files.length) pickFiles(files);
                 }}
               />
-              {!running && items.length === 0 ? (
+              {/* The picker comes back the moment a batch stops running. The
+                  finished list below is a REPORT of what just uploaded, not a
+                  mode: leaving it in place of the button stranded a school
+                  that wanted to upload to a second category (owner
+                  2026-08-25). */}
+              {!running ? (
                 <label htmlFor="lens-file-input">
                   <span
                     className={cn(
@@ -712,16 +757,51 @@ export function LensUploadPage({
             <div className="flex items-center gap-2 px-3 pt-3 sm:px-4">
               <h2 className="panel-title">{t("Your photos")}</h2>
               <span className="font-tabular text-xs text-muted-foreground">
-                {ctx.photos.length}
+                {galleryCat ? `${shownPhotos.length}/${ctx.photos.length}` : ctx.photos.length}
               </span>
+              {ctx.photos.length > 0 ? (
+                <button
+                  type="button"
+                  data-testid="gallery-filter-btn"
+                  onClick={() => setFilterOpen(true)}
+                  className={cn(
+                    "ml-auto inline-flex h-9 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium",
+                    galleryCat
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Filter aria-hidden="true" className="h-3.5 w-3.5" />
+                  <span className="max-w-[9rem] truncate">
+                    {galleryCat || t("Filter")}
+                  </span>
+                </button>
+              ) : null}
             </div>
+            {galleryCat ? (
+              <div className="px-3 pt-2 sm:px-4">
+                <button
+                  type="button"
+                  data-testid="gallery-filter-clear"
+                  onClick={() => setGalleryCat(null)}
+                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[0.6875rem] text-muted-foreground hover:text-foreground"
+                >
+                  {galleryCat}
+                  <X aria-hidden="true" className="h-3 w-3" />
+                </button>
+              </div>
+            ) : null}
             {ctx.photos.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">
                 {t("Nothing uploaded yet.")}
               </p>
+            ) : shownPhotos.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                {t("No photo in that category yet.")}
+              </p>
             ) : (
               <ul className="grid grid-cols-3 gap-2 p-3 sm:grid-cols-4">
-                {ctx.photos.map((p) => (
+                {shownPhotos.map((p) => (
                   <li
                     key={p.upload_ref}
                     className="relative flex flex-col gap-1"
@@ -772,6 +852,66 @@ export function LensUploadPage({
         </section>
       </main>
 
+      {/* Category filter for "Your photos": the house bottom sheet, with a
+          count beside every category so the list is readable before it is
+          used. */}
+      <Dialog
+        open={filterOpen}
+        onOpenChange={setFilterOpen}
+        ariaLabel={t("Filter by category")}
+        variant="sheet"
+      >
+        <DialogHeader>
+          <DialogTitle>{t("Filter by category")}</DialogTitle>
+        </DialogHeader>
+        <ul className="flex flex-col gap-1" data-testid="gallery-filter-list">
+          <li>
+            <button
+              type="button"
+              data-testid="gallery-filter-all"
+              onClick={() => {
+                setGalleryCat(null);
+                setFilterOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-sm",
+                !galleryCat
+                  ? "border-primary/40 bg-primary/10 font-medium text-primary"
+                  : "border-border hover:bg-muted",
+              )}
+            >
+              {t("All categories")}
+              <span className="font-tabular text-xs">{ctx.photos.length}</span>
+            </button>
+          </li>
+          {galleryCats.map((cat) => (
+            <li key={cat || "none"}>
+              <button
+                type="button"
+                data-testid={`gallery-filter-${cat || "none"}`}
+                onClick={() => {
+                  setGalleryCat(cat);
+                  setFilterOpen(false);
+                }}
+                className={cn(
+                  "flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2.5 text-left text-sm",
+                  galleryCat === cat
+                    ? "border-primary/40 bg-primary/10 font-medium text-primary"
+                    : "border-border hover:bg-muted",
+                )}
+              >
+                <span className="min-w-0 truncate">
+                  {cat || t("No category")}
+                </span>
+                <span className="font-tabular text-xs">
+                  {galleryCounts[cat]}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Dialog>
+
       {/* Own-photo preview: the picture big, its caption EDITABLE while
           pending, plus status and remove. */}
       <Dialog
@@ -783,8 +923,23 @@ export function LensUploadPage({
         variant="sheet"
       >
         {(() => {
-          const photo = ctx.photos.find((x) => x.upload_ref === previewRef);
+          // The preview steps through the list ON SCREEN, filter included:
+          // that is the set the school is working through, and jumping into a
+          // hidden category would be a different album.
+          const idx = shownPhotos.findIndex(
+            (x) => x.upload_ref === previewRef,
+          );
+          const photo = shownPhotos[idx];
           if (!photo) return null;
+          const go = (step: number): void => {
+            const next = shownPhotos[idx + step];
+            if (!next) return;
+            setPreviewRef(next.upload_ref);
+            // An edit belongs to the photo it was started on.
+            setPreviewEditing(false);
+            setCaptionDraft(null);
+          };
+          previewGoRef.current = go;
           const editable = ctx.campaign.is_open && photo.status === "pending";
           // A frame of a photo story is described by its STORY: one title and
           // one description for the whole entry. An ordinary photo carries its
@@ -866,6 +1021,34 @@ export function LensUploadPage({
                 className="max-h-[50vh] w-full rounded-md object-contain"
                 data-testid="preview-image"
               />
+
+              {shownPhotos.length > 1 && !previewEditing ? (
+                <div className="flex items-center justify-between gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="preview-prev"
+                    disabled={idx <= 0}
+                    onClick={() => go(-1)}
+                  >
+                    <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+                    {t("Previous")}
+                  </Button>
+                  <span className="font-tabular text-xs text-muted-foreground">
+                    {idx + 1} {t("of")} {shownPhotos.length}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="preview-next"
+                    disabled={idx >= shownPhotos.length - 1}
+                    onClick={() => go(1)}
+                  >
+                    {t("Next")}
+                    <ChevronRight aria-hidden="true" className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null}
 
               {!previewEditing ? (
                 <div className="flex flex-col gap-3" data-testid="preview-details">
