@@ -268,8 +268,10 @@ describe("PublicAlbumPage", () => {
     } as unknown as PublicAlbum);
     mount();
 
-    expect(await screen.findByText(/2 photos/)).toBeInTheDocument();
-    expect(screen.getByText(/1 school/)).toBeInTheDocument();
+    const counts = await screen.findByTestId("album-counts");
+    expect(counts).toHaveTextContent("2 photos");
+    expect(counts).toHaveTextContent("1 school");
+    expect(counts).toHaveTextContent("1 story");
     // The prize leads the album, and a STORY can hold it.
     const strip = screen.getByTestId("winners-strip");
     expect(within(strip).getByText("Road to the final")).toBeInTheDocument();

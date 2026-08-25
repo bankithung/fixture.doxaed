@@ -1,11 +1,13 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Printer, Search } from "lucide-react";
+import { Download, Printer, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
 import { tournamentsApi } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
+import { Dialog } from "@/components/ui/dialog";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 import { PublicViewerHeader } from "@/features/live/PublicViewerHeader";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -74,6 +76,8 @@ function Stat({
 export function PublicResultsPage(): React.ReactElement {
   const { slug = "", id = "" } = useParams();
   const [params, setParams] = useSearchParams();
+  const { isMobile } = useBreakpoint();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const q = useQuery({
     queryKey: ["public-results", slug, id],
@@ -178,6 +182,108 @@ export function PublicResultsPage(): React.ReactElement {
     URL.revokeObjectURL(url);
   };
 
+  /* The filter controls are authored once and rendered into whichever surface
+     fits: an inline bar on a desk, a bottom drawer on a phone. Three sport
+     chips wrapped onto three lines of a 360px screen, which is what a sticky
+     "Filters" button exists to prevent (owner 2026-08-25). */
+  const rowCount = `${view === "students" ? students.length : schools.length} ${
+    view === "students" ? t("students") : t("schools")
+  }`;
+  const activeFilters = [
+    sport ? 1 : 0,
+    search.trim() ? 1 : 0,
+    medalistsOnly ? 1 : 0,
+    sortParam && sortParam !== "points" ? 1 : 0,
+  ].reduce((a, b) => a + b, 0);
+
+  const searchField = (
+    <div className="relative min-w-[10rem] flex-1 sm:max-w-xs">
+      <Search
+        aria-hidden="true"
+        className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+      />
+      <Input
+        value={search}
+        onChange={(e) => setParam({ q: e.target.value || null })}
+        aria-label={
+          view === "students" ? t("Search students") : t("Search schools")
+        }
+        placeholder={
+          view === "students" ? t("Search students") : t("Search schools")
+        }
+        data-testid="results-search"
+        className={cn("pl-8", isMobile && "h-11")}
+      />
+    </div>
+  );
+
+  const sortSelect = (
+    <Select
+      size={isMobile ? "lg" : "sm"}
+      value={view === "students" ? studentSort : tallySort}
+      onChange={(v) => setParam({ sort: v === "points" ? null : v })}
+      aria-label={t("Sort")}
+      className={isMobile ? "w-full" : "w-40"}
+      options={
+        view === "students"
+          ? [
+              { value: "points", label: t("Most points") },
+              { value: "events", label: t("Most events") },
+              { value: "name", label: t("Name") },
+            ]
+          : [
+              { value: "points", label: t("Most points") },
+              { value: "golds", label: t("Most golds") },
+              { value: "name", label: t("School name") },
+            ]
+      }
+    />
+  );
+
+  const medallistsToggle = (
+    <label
+      className={cn(
+        "flex items-center gap-2 text-xs text-muted-foreground",
+        isMobile && "h-11 text-sm",
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={medalistsOnly}
+        onChange={(e) => setParam({ medalists: e.target.checked ? "1" : null })}
+        data-testid="results-medalists-only"
+        className="h-4 w-4 rounded border-border accent-primary"
+      />
+      {t("Medallists only")}
+    </label>
+  );
+
+  const sportChips = (
+    <div
+      role="tablist"
+      aria-label={t("Sports")}
+      className="flex flex-wrap items-center gap-1.5 print:hidden"
+    >
+      <Chip
+        testid="results-sport-all"
+        active={!sport}
+        onClick={() => setParam({ sport: null })}
+        label={t("All sports")}
+        count={allColumns.length}
+      />
+      {bands.map((b) => (
+        <Chip
+          key={b.sportKey}
+          testid={`results-sport-${b.sportKey}`}
+          active={sport === b.sportKey}
+          onClick={() => setParam({ sport: b.sportKey })}
+          label={b.sportName}
+          count={b.columns.length}
+        />
+      ))}
+    </div>
+  );
+
   const totals = q.data?.totals;
   const decidedAll =
     !!totals && totals.competitions > 0 && totals.decided === totals.competitions;
@@ -260,7 +366,7 @@ export function PublicResultsPage(): React.ReactElement {
           <>
             <div
               data-testid="results-summary"
-              className="flex flex-wrap items-center gap-x-8 gap-y-3 border-y border-border py-3"
+              className="grid grid-cols-2 gap-3 border-y border-border py-3 sm:flex sm:flex-wrap sm:items-center sm:gap-x-8 sm:gap-y-3"
             >
               <Stat value={q.data.totals.medals} label={t("Medals awarded")} />
               <Stat value={q.data.totals.points} label={t("Points awarded")} />
@@ -273,7 +379,7 @@ export function PublicResultsPage(): React.ReactElement {
                 label={t("Students")}
                 hint={`${multiEventCount(q.data.students)} ${t("in more than one event")}`}
               />
-              <div className="ml-auto flex flex-wrap items-center gap-2">
+              <div className="col-span-2 flex flex-wrap items-center gap-2 sm:ml-auto">
                 {ladder.map((l) => (
                   <span
                     key={l.place}
@@ -322,101 +428,23 @@ export function PublicResultsPage(): React.ReactElement {
               </div>
 
               <div className="flex flex-col gap-4">
-                {view !== "champions" ? (
+                {view !== "champions" && !isMobile ? (
                   <div className="flex flex-wrap items-center gap-3 print:hidden">
-                    <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
-                      <Search
-                        aria-hidden="true"
-                        className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                      />
-                      <Input
-                        value={search}
-                        onChange={(e) =>
-                          setParam({ q: e.target.value || null })
-                        }
-                        aria-label={
-                          view === "students"
-                            ? t("Search students")
-                            : t("Search schools")
-                        }
-                        placeholder={
-                          view === "students"
-                            ? t("Search students")
-                            : t("Search schools")
-                        }
-                        data-testid="results-search"
-                        className="pl-8"
-                      />
-                    </div>
-                    <Select
-                      size="sm"
-                      value={view === "students" ? studentSort : tallySort}
-                      onChange={(v) =>
-                        setParam({ sort: v === "points" ? null : v })
-                      }
-                      aria-label={t("Sort")}
-                      className="w-40"
-                      options={
-                        view === "students"
-                          ? [
-                              { value: "points", label: t("Most points") },
-                              { value: "events", label: t("Most events") },
-                              { value: "name", label: t("Name") },
-                            ]
-                          : [
-                              { value: "points", label: t("Most points") },
-                              { value: "golds", label: t("Most golds") },
-                              { value: "name", label: t("School name") },
-                            ]
-                      }
-                    />
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={medalistsOnly}
-                        onChange={(e) =>
-                          setParam({ medalists: e.target.checked ? "1" : null })
-                        }
-                        data-testid="results-medalists-only"
-                        className="h-4 w-4 rounded border-border accent-primary"
-                      />
-                      {t("Medallists only")}
-                    </label>
+                    {searchField}
+                    {sortSelect}
+                    {medallistsToggle}
                     <span
                       className="font-tabular text-xs text-muted-foreground"
                       data-testid="results-row-count"
                     >
-                      {view === "students" ? students.length : schools.length}{" "}
-                      {view === "students" ? t("students") : t("schools")}
+                      {rowCount}
                     </span>
                   </div>
                 ) : null}
 
                 {view === "tally" ? (
                   <>
-                    <div
-                      role="tablist"
-                      aria-label={t("Sports")}
-                      className="flex flex-wrap items-center gap-1.5 print:hidden"
-                    >
-                      <Chip
-                        testid="results-sport-all"
-                        active={!sport}
-                        onClick={() => setParam({ sport: null })}
-                        label={t("All sports")}
-                        count={allColumns.length}
-                      />
-                      {bands.map((b) => (
-                        <Chip
-                          key={b.sportKey}
-                          testid={`results-sport-${b.sportKey}`}
-                          active={sport === b.sportKey}
-                          onClick={() => setParam({ sport: b.sportKey })}
-                          label={b.sportName}
-                          count={b.columns.length}
-                        />
-                      ))}
-                    </div>
+                    {!isMobile ? sportChips : null}
 
                     {bars.length ? (
                       <div className="rounded-lg border border-border bg-muted/20 p-3 sm:p-4">
@@ -451,9 +479,15 @@ export function PublicResultsPage(): React.ReactElement {
                       </p>
                     )}
 
-                    <div className="flex flex-col gap-2 border-t border-border pt-3">
+                    <details
+                      open={!isMobile}
+                      className="flex flex-col gap-2 border-t border-border pt-3"
+                    >
+                      <summary className="cursor-pointer text-xs text-muted-foreground print:hidden">
+                        {t("Column codes")} ({columns.length})
+                      </summary>
                       <div
-                        className="flex flex-wrap gap-x-5 gap-y-2"
+                        className="mt-2 flex flex-wrap gap-x-5 gap-y-2"
                         data-testid="results-legend"
                       >
                         {columns.map((c) => (
@@ -494,7 +528,7 @@ export function PublicResultsPage(): React.ReactElement {
                         {t("a dash means no placing in that competition.")}
                         {decidedAll ? ` · ${t("Every competition is final.")}` : ""}
                       </p>
-                    </div>
+                    </details>
                   </>
                 ) : view === "champions" ? (
                   <ChampionsView
@@ -522,6 +556,102 @@ export function PublicResultsPage(): React.ReactElement {
           </>
         )}
        </section>
+
+      {/* Mobile: one thumb-reachable door to every filter, the way the match
+          board does it. It states the count so the drawer is only opened on
+          purpose. */}
+      {isMobile && q.data && view !== "champions" ? (
+        <>
+          <div className="h-16 print:hidden" aria-hidden="true" />
+          <div
+            data-testid="results-bottom-bar"
+            className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur print:hidden supports-[backdrop-filter]:bg-card/85"
+          >
+            <span className="min-w-0 flex-1 truncate font-tabular text-xs text-muted-foreground">
+              {rowCount}
+            </span>
+            <Button
+              data-testid="results-filters-open"
+              className="h-11 shrink-0 px-4 text-sm"
+              onClick={() => setSheetOpen(true)}
+            >
+              <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+              {t("Filters")}
+              {activeFilters > 0 ? (
+                <span
+                  data-testid="results-filter-count"
+                  className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-foreground px-1 font-tabular text-[0.6875rem] font-bold text-primary"
+                >
+                  {activeFilters}
+                </span>
+              ) : null}
+            </Button>
+          </div>
+        </>
+      ) : null}
+
+      <Dialog
+        open={isMobile && sheetOpen}
+        onOpenChange={setSheetOpen}
+        variant="sheet"
+        ariaLabel={t("Filter the results")}
+      >
+        <div data-testid="results-filter-sheet" className="flex flex-col gap-4">
+          <span
+            aria-hidden="true"
+            className="mx-auto h-1 w-10 shrink-0 rounded-full bg-border"
+          />
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold">{t("Filters")}</h2>
+            {activeFilters > 0 ? (
+              <button
+                type="button"
+                data-testid="results-sheet-reset"
+                onClick={() =>
+                  setParam({
+                    sport: null,
+                    q: null,
+                    medalists: null,
+                    sort: null,
+                  })
+                }
+                className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary"
+              >
+                <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("Reset")}
+              </button>
+            ) : null}
+          </div>
+
+          {searchField}
+
+          {view === "tally" ? (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                {t("Sport")}
+              </span>
+              {sportChips}
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              {t("Sort")}
+            </span>
+            {sortSelect}
+          </div>
+
+          {medallistsToggle}
+
+          <Button
+            data-testid="results-sheet-apply"
+            className="h-12 w-full text-base"
+            onClick={() => setSheetOpen(false)}
+          >
+            {t("Show")} {rowCount}
+          </Button>
+        </div>
+      </Dialog>
       </main>
     </div>
   );

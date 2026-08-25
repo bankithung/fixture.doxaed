@@ -10,6 +10,7 @@ import { isSetSport } from "@/lib/setDisplay";
 import { t } from "@/lib/t";
 import { useEventStream } from "@/lib/useEventStream";
 import { BracketView } from "@/features/tournaments/BracketView";
+import { usePublicRosters } from "@/features/fixtures/publicTournament";
 import { Bookmark } from "@/features/fixtures/publicTournamentViews";
 
 /** Humanized segments of a competition leaf key ("sepak_takraw.u14.boys" →
@@ -226,6 +227,13 @@ export function OpsStandingsPage(): React.ReactElement {
 
   // Live: the tournament tick invalidates both queries so the view advances.
   const slug = tournamentQ.data?.slug || null;
+  // Player names on the draw, on request. A TT card reads "Grace Academy TT-1"
+  // and hides the child actually playing; the public boards already print the
+  // sheet, so the ops board offers the same switch (owner 2026-08-25). The
+  // roster is a second request over the whole tournament, so it is fetched
+  // only once someone asks.
+  const [showPlayers, setShowPlayers] = useState(false);
+  const { rosters } = usePublicRosters(slug ?? "", id, showPlayers);
   useEventStream(slug ? liveApi.streamUrl(slug, id) : null, () => {
     qc.invalidateQueries({ queryKey: qk.matches(id) });
     qc.invalidateQueries({ queryKey: qk.standings(id) });
@@ -448,11 +456,27 @@ export function OpsStandingsPage(): React.ReactElement {
                   {knockout.length}{" "}
                   {knockout.length === 1 ? t("match") : t("matches")}
                 </span>
+                <label className="ml-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={showPlayers}
+                    onChange={(e) => setShowPlayers(e.target.checked)}
+                    data-testid="bracket-show-players"
+                    className="h-4 w-4 rounded border-border accent-primary"
+                  />
+                  {t("Show players")}
+                </label>
               </div>
-              <div className="p-4">
+              <div className="p-2 sm:p-4">
+                {/* `wrapNames` grows every card until the longest school name
+                    fits and lets it wrap: a card reading "CHRISTIAN HIGHER
+                    SECONDARY SCH…" does not say who is playing (owner
+                    2026-08-25). */}
                 <BracketView
                   matches={knockout}
                   timeZone={tournamentQ.data?.time_zone}
+                  wrapNames
+                  rosters={showPlayers ? rosters : undefined}
                 />
               </div>
             </section>

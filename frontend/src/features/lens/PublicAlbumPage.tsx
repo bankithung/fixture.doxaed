@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Award, Camera, ChevronLeft, ChevronRight, ScanLine } from "lucide-react";
+import {
+  Award,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  ScanLine,
+  SlidersHorizontal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { lensApi, type PublicAlbumPhoto } from "@/api/lens";
 import { BrandLogo } from "@/components/ui/BrandLogo";
@@ -15,6 +22,7 @@ import { qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 
 /**
  * The public shared event album ("20 schools. 2 days. 1 shared album."):
@@ -44,6 +52,8 @@ export function AlbumPanel({
 }): React.ReactElement {
   const [category, setCategory] = useState<string>("");
   const [school, setSchool] = useState<string>("");
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const { isMobile } = useBreakpoint();
   const [openRef, setOpenRef] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const navigate = useNavigate();
@@ -150,6 +160,7 @@ export function AlbumPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [openPhoto, openIdx, photos]);
 
+  const activeFilters = (category ? 1 : 0) + (school ? 1 : 0);
   const campaign = q.data?.campaign ?? null;
   // The wall is not the album: a story's frames are approved photographs too,
   // and counting only the wall told an album made entirely of stories that it
@@ -230,7 +241,10 @@ export function AlbumPanel({
                 <h1 className="truncate text-lg font-semibold tracking-tight sm:text-2xl">
                   {campaign.title}
                 </h1>
-                <p className="font-tabular text-xs text-muted-foreground">
+                <p
+                  data-testid="album-counts"
+                  className="font-tabular text-xs text-muted-foreground"
+                >
                   {total} {total === 1 ? t("photo") : t("photos")} ·{" "}
                   {schoolCount} {schoolCount === 1 ? t("school") : t("schools")}
                   {stories.length
@@ -316,19 +330,33 @@ export function AlbumPanel({
                         className="scroll-mt-24 rounded-lg border border-border bg-card p-2.5 shadow-sm"
                         data-testid={`album-story-${s.id}`}
                       >
-                        <div className="flex flex-wrap items-center gap-1.5 pb-2">
-                          <span className="text-sm font-semibold">
-                            {s.title || t("Untitled story")}
-                          </span>
+                        <div className="flex flex-col gap-1 pb-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-sm font-semibold">
+                              {s.title || t("Untitled story")}
+                            </span>
+                            {s.award_category &&
+                            liveCategories.has(s.award_category) ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                                <Award aria-hidden="true" className="h-3 w-3" />
+                                {s.award_category}
+                              </span>
+                            ) : null}
+                            <span className="ml-auto shrink-0 font-tabular text-[0.6875rem] text-muted-foreground">
+                              {s.photos.length}{" "}
+                              {s.photos.length === 1 ? t("photo") : t("photos")}
+                            </span>
+                          </div>
                           <span className="text-xs text-muted-foreground">
                             {s.institution_name}
+                            {s.category ? ` · ${s.category}` : ""}
                           </span>
-                          {s.award_category &&
-                          liveCategories.has(s.award_category) ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                              <Award aria-hidden="true" className="h-3 w-3" />
-                              {s.award_category}
-                            </span>
+                          {/* The description the school wrote was never shown
+                              anywhere (owner 2026-08-25). */}
+                          {s.description ? (
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                              {s.description}
+                            </p>
                           ) : null}
                         </div>
                         <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -342,13 +370,17 @@ export function AlbumPanel({
                                   loading="lazy"
                                   className="aspect-[4/3] w-full rounded-md border border-border object-cover"
                                 />
+                                {/* A frame is numbered, not captioned: a story
+                                    is named once by its title, so "No caption"
+                                    under every frame was pure noise (owner
+                                    2026-08-25). */}
                                 <p className="mt-0.5 flex items-start gap-1 text-[0.6875rem] leading-snug text-muted-foreground">
                                   <span className="font-tabular font-semibold text-foreground">
                                     {f.position}
                                   </span>
-                                  <span className="min-w-0">
-                                    {f.caption || t("No caption")}
-                                  </span>
+                                  {f.caption ? (
+                                    <span className="min-w-0">{f.caption}</span>
+                                  ) : null}
                                 </p>
                               </li>
                             ))}
@@ -360,24 +392,46 @@ export function AlbumPanel({
               ) : null}
 
               {/* Prize winners lead: they are the editorial top of the album. */}
-              {/* Filters — one control height per row (owner 2026-07-26).
-                  Categories scroll rather than wrap on a phone. */}
-              <div className="sticky top-[57px] z-10 flex flex-col gap-2 border-b border-border bg-card px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:px-5">
-                <div className="flex items-center gap-2 overflow-x-auto sm:contents">
+              {/* Filters. On a desk they are an inline row; on a phone six
+                  category chips plus a school select stacked three rows deep,
+                  so there they live behind one thumb-reachable button instead
+                  (owner 2026-08-25). */}
+              {!isMobile ? (
+                <div className="sticky top-[57px] z-10 flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-3 sm:px-5">
                   {chip("", t("All"), total)}
                   {(q.data?.award_categories ?? []).map((cat) =>
                     chip(cat, cat, countIn(cat)),
                   )}
+                  <div className="ml-auto w-56">
+                    <Select
+                      aria-label={t("Filter by school")}
+                      value={school}
+                      onChange={setSchool}
+                      options={schoolOptions}
+                    />
+                  </div>
                 </div>
-                <div className="w-full sm:ml-auto sm:w-56">
-                  <Select
-                    aria-label={t("Filter by school")}
-                    value={school}
-                    onChange={setSchool}
-                    options={schoolOptions}
-                  />
+              ) : (
+                <div className="flex items-center gap-2 border-b border-border px-4 py-2">
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    {category || t("All categories")}
+                    {school ? ` · ${school}` : ""}
+                  </span>
+                  {category || school ? (
+                    <button
+                      type="button"
+                      data-testid="album-filter-clear"
+                      onClick={() => {
+                        setCategory("");
+                        setSchool("");
+                      }}
+                      className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-primary"
+                    >
+                      {t("Clear")}
+                    </button>
+                  ) : null}
                 </div>
-              </div>
+              )}
 
               {/* The wall. */}
               {photos.length === 0 ? (
@@ -399,6 +453,111 @@ export function AlbumPanel({
             </>
           )}
         </section>
+
+      {/* Mobile: one door to the filters, thumb-reachable, stating what is on
+          screen so the drawer is only opened on purpose. */}
+      {isMobile && campaign ? (
+        <>
+          <div className="h-16" aria-hidden="true" />
+          <div
+            data-testid="album-bottom-bar"
+            className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur supports-[backdrop-filter]:bg-card/85"
+          >
+            <span className="min-w-0 flex-1 truncate font-tabular text-xs text-muted-foreground">
+              {category ? countIn(category) : total}{" "}
+              {t("photos")}
+            </span>
+            <Button
+              data-testid="album-filters-open"
+              className="h-11 shrink-0 px-4 text-sm"
+              onClick={() => setSheetOpen(true)}
+            >
+              <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+              {t("Filters")}
+              {activeFilters > 0 ? (
+                <span className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-foreground px-1 font-tabular text-[0.6875rem] font-bold text-primary">
+                  {activeFilters}
+                </span>
+              ) : null}
+            </Button>
+          </div>
+        </>
+      ) : null}
+
+      <Dialog
+        open={isMobile && sheetOpen}
+        onOpenChange={setSheetOpen}
+        variant="sheet"
+        ariaLabel={t("Filter the album")}
+      >
+        <div data-testid="album-filter-sheet" className="flex flex-col gap-4">
+          <span
+            aria-hidden="true"
+            className="mx-auto h-1 w-10 shrink-0 rounded-full bg-border"
+          />
+          <h2 className="text-base font-semibold">{t("Filters")}</h2>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              {t("Category")}
+            </span>
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                data-testid="album-sheet-all"
+                onClick={() => setCategory("")}
+                className={cn(
+                  "flex items-center justify-between rounded-md border px-3 py-2.5 text-sm",
+                  !category
+                    ? "border-primary/40 bg-primary/10 font-medium text-primary"
+                    : "border-border",
+                )}
+              >
+                {t("All categories")}
+                <span className="font-tabular text-xs">{total}</span>
+              </button>
+              {(q.data?.award_categories ?? []).map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  data-testid={`album-sheet-${cat}`}
+                  onClick={() => setCategory(cat)}
+                  className={cn(
+                    "flex items-center justify-between gap-2 rounded-md border px-3 py-2.5 text-left text-sm",
+                    category === cat
+                      ? "border-primary/40 bg-primary/10 font-medium text-primary"
+                      : "border-border",
+                  )}
+                >
+                  <span className="min-w-0 truncate">{cat}</span>
+                  <span className="font-tabular text-xs">{countIn(cat)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              {t("School")}
+            </span>
+            <Select
+              size="lg"
+              aria-label={t("Filter by school")}
+              value={school}
+              onChange={setSchool}
+              options={schoolOptions}
+            />
+          </div>
+
+          <Button
+            data-testid="album-sheet-apply"
+            className="h-12 w-full text-base"
+            onClick={() => setSheetOpen(false)}
+          >
+            {t("Show photos")}
+          </Button>
+        </div>
+      </Dialog>
 
       {/* Scan the poster's QR right here: the phone opens its camera, reads
           the join link, and walks into the school-code upload flow. */}

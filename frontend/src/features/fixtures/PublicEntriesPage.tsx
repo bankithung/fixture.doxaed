@@ -1,11 +1,20 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Download, Printer, Search } from "lucide-react";
+import {
+  Check,
+  Download,
+  Printer,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 import { tournamentsApi, type PublicEntryInstitution } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/Select";
+import { Dialog } from "@/components/ui/dialog";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 import { TeamCrest } from "@/components/ui/TeamCrest";
 import { PublicViewerHeader } from "@/features/live/PublicViewerHeader";
 import { routes } from "@/lib/routes";
@@ -108,6 +117,8 @@ function Cell({
 export function PublicEntriesPage(): React.ReactElement {
   const { slug = "", id = "" } = useParams();
   const [params, setParams] = useSearchParams();
+  const { isMobile } = useBreakpoint();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const q = useQuery({
     queryKey: ["public-entries", slug, id],
@@ -203,6 +214,71 @@ export function PublicEntriesPage(): React.ReactElement {
   const columnSchools = (col: MatrixColumn): number =>
     rows.reduce((n, r) => n + (cellCount(r, col.leaf_key) > 0 ? 1 : 0), 0);
 
+  /* Authored once, rendered into whichever surface fits: an inline bar on a
+     desk, a bottom drawer on a phone. Three sport chips, a search box, a sort
+     select and a count stacked four rows deep on a 360px screen (owner
+     2026-08-25). */
+  const activeFilters =
+    (sport ? 1 : 0) + (search.trim() ? 1 : 0) + (sort !== "name" ? 1 : 0);
+
+  const searchField = (
+    <div className="relative min-w-[10rem] flex-1 sm:max-w-xs">
+      <Search
+        aria-hidden="true"
+        className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+      />
+      <Input
+        value={search}
+        onChange={(e) => setParam({ q: e.target.value || null })}
+        aria-label={t("Search schools")}
+        placeholder={t("Search schools")}
+        data-testid="entries-search"
+        className={cn("pl-8", isMobile && "h-11")}
+      />
+    </div>
+  );
+
+  const sortSelect = (
+    <Select
+      size={isMobile ? "lg" : "sm"}
+      value={sort}
+      onChange={(v) => setParam({ sort: v === "name" ? null : v })}
+      aria-label={t("Sort schools")}
+      className={isMobile ? "w-full" : "w-40"}
+      options={[
+        { value: "name", label: t("School name") },
+        { value: "entries", label: t("Most entries") },
+        { value: "competitions", label: t("Most competitions") },
+      ]}
+    />
+  );
+
+  const sportChips = (
+    <div
+      role="tablist"
+      aria-label={t("Sports")}
+      className="flex flex-wrap items-center gap-1.5 print:hidden"
+    >
+      <Chip
+        testid="entries-sport-all"
+        active={!sport}
+        onClick={() => setParam({ sport: null })}
+        label={t("All sports")}
+        count={columns.length}
+      />
+      {bands.map((b) => (
+        <Chip
+          key={b.sportKey}
+          testid={`entries-sport-pick-${b.sportKey}`}
+          active={sport === b.sportKey}
+          onClick={() => setParam({ sport: b.sportKey })}
+          label={b.sportName}
+          count={b.columns.length}
+        />
+      ))}
+    </div>
+  );
+
   const stick =
     "w-40 min-w-40 max-w-40 sm:w-64 sm:min-w-64 sm:max-w-64 lg:w-80 lg:min-w-80 lg:max-w-80";
 
@@ -276,7 +352,7 @@ export function PublicEntriesPage(): React.ReactElement {
             <>
               <div
                 data-testid="entries-summary"
-                className="flex flex-wrap items-center gap-x-6 gap-y-3 border-y border-border py-3"
+                className="grid grid-cols-3 gap-3 border-y border-border py-3 sm:flex sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-3"
               >
                 <div className="flex flex-col">
                   <span className="font-tabular text-xl font-semibold sm:text-2xl">
@@ -302,7 +378,7 @@ export function PublicEntriesPage(): React.ReactElement {
                     {t("Entries")}
                   </span>
                 </div>
-                <div className="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
+                <div className="col-span-3 flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
                   {totalsBySport.map((s) => (
                     <span
                       key={s.sportKey}
@@ -318,64 +394,22 @@ export function PublicEntriesPage(): React.ReactElement {
                 </div>
               </div>
 
-              <div
-                role="tablist"
-                aria-label={t("Sports")}
-                className="flex flex-wrap items-center gap-1.5 print:hidden"
-              >
-                <Chip
-                  testid="entries-sport-all"
-                  active={!sport}
-                  onClick={() => setParam({ sport: null })}
-                  label={t("All sports")}
-                  count={columns.length}
-                />
-                {bands.map((b) => (
-                  <Chip
-                    key={b.sportKey}
-                    testid={`entries-sport-pick-${b.sportKey}`}
-                    active={sport === b.sportKey}
-                    onClick={() => setParam({ sport: b.sportKey })}
-                    label={b.sportName}
-                    count={b.columns.length}
-                  />
-                ))}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 print:hidden sm:gap-3">
-                <div className="relative min-w-[10rem] flex-1 sm:max-w-xs">
-                  <Search
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                  />
-                  <Input
-                    value={search}
-                    onChange={(e) => setParam({ q: e.target.value || null })}
-                    aria-label={t("Search schools")}
-                    placeholder={t("Search schools")}
-                    data-testid="entries-search"
-                    className="pl-8"
-                  />
-                </div>
-                <Select
-                  size="sm"
-                  value={sort}
-                  onChange={(v) => setParam({ sort: v === "name" ? null : v })}
-                  aria-label={t("Sort schools")}
-                  className="w-40"
-                  options={[
-                    { value: "name", label: t("School name") },
-                    { value: "entries", label: t("Most entries") },
-                    { value: "competitions", label: t("Most competitions") },
-                  ]}
-                />
-                <span
-                  className="font-tabular text-xs text-muted-foreground"
-                  data-testid="entries-row-count"
-                >
-                  {rows.length} {rows.length === 1 ? t("school") : t("schools")}
-                </span>
-              </div>
+              {!isMobile ? (
+                <>
+                  {sportChips}
+                  <div className="flex flex-wrap items-center gap-3 print:hidden">
+                    {searchField}
+                    {sortSelect}
+                    <span
+                      className="font-tabular text-xs text-muted-foreground"
+                      data-testid="entries-row-count"
+                    >
+                      {rows.length}{" "}
+                      {rows.length === 1 ? t("school") : t("schools")}
+                    </span>
+                  </div>
+                </>
+              ) : null}
 
               {rows.length === 0 ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">
@@ -539,32 +573,124 @@ export function PublicEntriesPage(): React.ReactElement {
                 </div>
               )}
 
-              <div
-                className="flex flex-wrap gap-x-5 gap-y-2 border-t border-border pt-3"
-                data-testid="entries-legend"
+              <details
+                open={!isMobile}
+                className="border-t border-border pt-3"
               >
-                {shownColumns.map((c) => (
-                  <div
-                    key={c.leaf_key}
-                    className="flex items-center gap-2 text-xs"
-                  >
-                    <span className="rounded bg-primary/10 px-1.5 py-0.5 font-tabular text-[0.6875rem] font-semibold text-primary">
-                      {c.code}
-                    </span>
-                    <span className="text-muted-foreground">
-                      <span className="text-foreground">{c.title}</span>
-                      {" · "}
-                      <span className="font-tabular">
-                        {columnSchools(c)}{" "}
-                        {columnSchools(c) === 1 ? t("school") : t("schools")}
+                <summary className="cursor-pointer text-xs text-muted-foreground print:hidden">
+                  {t("Column codes")} ({shownColumns.length})
+                </summary>
+                <div
+                  className="mt-2 flex flex-wrap gap-x-5 gap-y-2"
+                  data-testid="entries-legend"
+                >
+                  {shownColumns.map((c) => (
+                    <div
+                      key={c.leaf_key}
+                      className="flex items-center gap-2 text-xs"
+                    >
+                      <span className="rounded bg-primary/10 px-1.5 py-0.5 font-tabular text-[0.6875rem] font-semibold text-primary">
+                        {c.code}
                       </span>
-                    </span>
-                  </div>
-                ))}
-              </div>
+                      <span className="text-muted-foreground">
+                        <span className="text-foreground">{c.title}</span>
+                        {" · "}
+                        <span className="font-tabular">
+                          {columnSchools(c)}{" "}
+                          {columnSchools(c) === 1 ? t("school") : t("schools")}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </details>
             </>
           )}
         </section>
+
+      {/* Mobile: one thumb-reachable door to every filter. */}
+      {isMobile && q.data && allRows.length > 0 ? (
+        <>
+          <div className="h-16 print:hidden" aria-hidden="true" />
+          <div
+            data-testid="entries-bottom-bar"
+            className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur print:hidden supports-[backdrop-filter]:bg-card/85"
+          >
+            <span
+              className="min-w-0 flex-1 truncate font-tabular text-xs text-muted-foreground"
+              data-testid="entries-row-count"
+            >
+              {rows.length} {rows.length === 1 ? t("school") : t("schools")}
+            </span>
+            <Button
+              data-testid="entries-filters-open"
+              className="h-11 shrink-0 px-4 text-sm"
+              onClick={() => setSheetOpen(true)}
+            >
+              <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+              {t("Filters")}
+              {activeFilters > 0 ? (
+                <span className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-foreground px-1 font-tabular text-[0.6875rem] font-bold text-primary">
+                  {activeFilters}
+                </span>
+              ) : null}
+            </Button>
+          </div>
+        </>
+      ) : null}
+
+      <Dialog
+        open={isMobile && sheetOpen}
+        onOpenChange={setSheetOpen}
+        variant="sheet"
+        ariaLabel={t("Filter the schools")}
+      >
+        <div data-testid="entries-filter-sheet" className="flex flex-col gap-4">
+          <span
+            aria-hidden="true"
+            className="mx-auto h-1 w-10 shrink-0 rounded-full bg-border"
+          />
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold">{t("Filters")}</h2>
+            {activeFilters > 0 ? (
+              <button
+                type="button"
+                data-testid="entries-sheet-reset"
+                onClick={() => setParam({ sport: null, q: null, sort: null })}
+                className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary"
+              >
+                <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("Reset")}
+              </button>
+            ) : null}
+          </div>
+
+          {searchField}
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              {t("Sport")}
+            </span>
+            {sportChips}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              {t("Sort")}
+            </span>
+            {sortSelect}
+          </div>
+
+          <Button
+            data-testid="entries-sheet-apply"
+            className="h-12 w-full text-base"
+            onClick={() => setSheetOpen(false)}
+          >
+            {t("Show")} {rows.length}{" "}
+            {rows.length === 1 ? t("school") : t("schools")}
+          </Button>
+        </div>
+      </Dialog>
       </main>
     </div>
   );

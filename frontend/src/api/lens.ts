@@ -226,6 +226,8 @@ export interface PublicAlbumStory {
   id: string;
   institution_name: string;
   title: string;
+  /** Optional free text the school wrote with the entry. */
+  description: string;
   category: string;
   award_category: string;
   photos: LensStoryFrame[];
