@@ -76,6 +76,18 @@ class TournamentVideo(models.Model):
     youtube_url = models.URLField(max_length=500, blank=True, default="")
     facebook_url = models.URLField(max_length=500, blank=True, default="")
     instagram_url = models.URLField(max_length=500, blank=True, default="")
+    #: The day the footage is OF, which is rarely the day it was uploaded —
+    #: a viewer looking for "Saturday" means the play, not the post.
+    played_on = models.DateField(null=True, blank=True, db_index=True)
+    #: The schools in the footage. A match video features two, so this is a
+    #: relation rather than a field: a school filter has to find both.
+    institutions = models.ManyToManyField(
+        "teams.Institution", blank=True, related_name="videos",
+    )
+    #: Free labels the host adds ("Table Tennis", "U-14", "Final"). Free on
+    #: purpose: nothing in the platform should decide what is worth tagging,
+    #: and the host's own category tree is offered as suggestions, not rules.
+    tags = models.JSONField(default=list, blank=True)
     position = models.PositiveIntegerField(default=0)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

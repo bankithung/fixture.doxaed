@@ -24,6 +24,8 @@ vi.mock("@/api/videos", async (importOriginal) => {
 
 const PAYLOAD: VideoAlbumsPayload = {
   can_manage: true,
+  schools: [{ id: "i1", name: "Grace Academy", crest: "" }],
+  suggested_tags: ["Table Tennis", "U-14"],
   albums: [
     {
       id: "a1", title: "Day 1", description: "", position: 1, video_count: 1,
@@ -31,7 +33,7 @@ const PAYLOAD: VideoAlbumsPayload = {
         {
           id: "v1", event: "U-14 Boys Final", note: "",
           youtube_url: "https://youtu.be/dQw4w9WgXcQ", facebook_url: "",
-          instagram_url: "", youtube_id: "dQw4w9WgXcQ", position: 1,
+          instagram_url: "", youtube_id: "dQw4w9WgXcQ", position: 1, played_on: null, tags: [], schools: [],
         },
       ],
     },
@@ -65,7 +67,7 @@ describe("VideoAlbumsPage", () => {
     vi.mocked(videosApi.addVideo).mockResolvedValue({
       id: "v9", event: "Open Final", note: "",
       youtube_url: "https://youtu.be/abc123", facebook_url: "",
-      instagram_url: "", youtube_id: "abc123", position: 0,
+      instagram_url: "", youtube_id: "abc123", position: 0, played_on: null, tags: [], schools: [],
     });
   });
 
@@ -98,6 +100,9 @@ describe("VideoAlbumsPage", () => {
     await waitFor(() =>
       expect(videosApi.addVideo).toHaveBeenCalledWith("t1", "a1", {
         event: "Open Final",
+        played_on: null,
+        tags: [],
+        schools: [],
         youtube_url: "https://youtu.be/abc123",
         facebook_url: "",
         instagram_url: "",

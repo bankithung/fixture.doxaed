@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Film, Plus, Trash2 } from "lucide-react";
+import { Dialog, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/types/api";
 import { videosApi, type VideoAlbum } from "@/api/videos";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { TagField } from "./TagField";
 import { VideoCard } from "./VideoCard";
 
 /**
@@ -75,7 +77,9 @@ export function VideoAlbumsPage(): React.ReactElement {
   });
 
   return (
-    <div className="flex w-full flex-col gap-5">
+    /* ONE section: heading, the new-album row and every album live in the same
+       panel (owner 2026-08-26). */
+    <section className="flex w-full flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
       <div className="flex flex-wrap items-center gap-2.5">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10">
           <Film aria-hidden="true" className="h-5 w-5 text-primary" />
@@ -94,7 +98,7 @@ export function VideoAlbumsPage(): React.ReactElement {
       </div>
 
       {canManage ? (
-        <section className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="flex flex-wrap items-end gap-2 border-y border-border py-3">
           <label className="flex min-w-[14rem] flex-1 flex-col gap-1">
             <span className="text-xs font-medium">{t("New album")}</span>
             <Input
@@ -112,11 +116,11 @@ export function VideoAlbumsPage(): React.ReactElement {
             <Plus className="mr-1.5 h-4 w-4" />
             {t("Create album")}
           </Button>
-        </section>
+        </div>
       ) : null}
 
       {q.isLoading ? (
-        <div className="h-40 animate-pulse rounded-xl border border-border bg-card" />
+        <div className="h-40 animate-pulse rounded-lg bg-muted/40" />
       ) : albums.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center">
           <p className="text-sm font-medium">{t("No albums yet.")}</p>
@@ -131,8 +135,11 @@ export function VideoAlbumsPage(): React.ReactElement {
             tournamentId={id}
             album={album}
             canManage={canManage}
+            schools={q.data?.schools ?? []}
+            suggestedTags={q.data?.suggested_tags ?? []}
             open={openId === album.id}
             onToggle={() => setOpenId(openId === album.id ? null : album.id)}
+            onClose={() => setOpenId(null)}
             onChanged={refresh}
             onRemoveAlbum={() => removeAlbum.mutate(album.id)}
             onRemoveVideo={(videoId) => removeVideo.mutate(videoId)}
@@ -140,7 +147,7 @@ export function VideoAlbumsPage(): React.ReactElement {
           />
         ))
       )}
-    </div>
+    </section>
   );
 }
 
@@ -148,8 +155,11 @@ function AlbumPanel({
   tournamentId,
   album,
   canManage,
+  schools,
+  suggestedTags,
   open,
   onToggle,
+  onClose,
   onChanged,
   onRemoveAlbum,
   onRemoveVideo,
@@ -158,8 +168,11 @@ function AlbumPanel({
   tournamentId: string;
   album: VideoAlbum;
   canManage: boolean;
+  schools: { id: string; name: string; crest: string }[];
+  suggestedTags: string[];
   open: boolean;
   onToggle: () => void;
+  onClose: () => void;
   onChanged: () => void;
   onRemoveAlbum: () => void;
   onRemoveVideo: (videoId: string) => void;
@@ -167,35 +180,50 @@ function AlbumPanel({
 }): React.ReactElement {
   const toast = useToast();
   const [event, setEvent] = useState("");
+  const [playedOn, setPlayedOn] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [picked, setPicked] = useState<string[]>([]);
   const [youtube, setYoutube] = useState("");
   const [facebook, setFacebook] = useState("");
   const [instagram, setInstagram] = useState("");
+
+  const reset = (): void => {
+    setEvent("");
+    setPlayedOn("");
+    setTags([]);
+    setPicked([]);
+    setYoutube("");
+    setFacebook("");
+    setInstagram("");
+  };
 
   const add = useMutation({
     mutationFn: () =>
       videosApi.addVideo(tournamentId, album.id, {
         event: event.trim(),
+        played_on: playedOn || null,
+        tags,
+        schools: picked,
         youtube_url: youtube.trim(),
         facebook_url: facebook.trim(),
         instagram_url: instagram.trim(),
       }),
     onSuccess: () => {
-      setEvent("");
-      setYoutube("");
-      setFacebook("");
-      setInstagram("");
+      reset();
+      onClose();
       onChanged();
       toast.push({ kind: "success", title: t("Video added") });
     },
     onError: (e) => onError(e, t("Could not add the video")),
   });
 
-  const ready = event.trim() && (youtube.trim() || facebook.trim() || instagram.trim());
+  const ready =
+    event.trim() && (youtube.trim() || facebook.trim() || instagram.trim());
 
   return (
     <section
       data-testid={`album-${album.id}`}
-      className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm"
+      className="flex flex-col gap-3 border-t border-border pt-4"
     >
       <header className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold">{album.title}</h3>
@@ -227,63 +255,12 @@ function AlbumPanel({
         ) : null}
       </header>
 
-      {canManage && open ? (
-        <div
-          data-testid={`album-form-${album.id}`}
-          className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-3"
-        >
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium">{t("Event")} *</span>
-            <Input
-              value={event}
-              onChange={(e) => setEvent(e.target.value)}
-              placeholder={t("U-14 Boys Final")}
-              data-testid={`video-event-${album.id}`}
-            />
-          </label>
-          <div className="grid gap-2 sm:grid-cols-3">
-            <LinkField
-              label={t("YouTube link")}
-              value={youtube}
-              onChange={setYoutube}
-              testid={`video-yt-input-${album.id}`}
-            />
-            <LinkField
-              label={t("Facebook link")}
-              value={facebook}
-              onChange={setFacebook}
-              testid={`video-fb-input-${album.id}`}
-            />
-            <LinkField
-              label={t("Instagram link")}
-              value={instagram}
-              onChange={setInstagram}
-              testid={`video-ig-input-${album.id}`}
-            />
-          </div>
-          <p className="text-[0.6875rem] text-muted-foreground">
-            {t(
-              "At least one link. The YouTube one plays on the page; the others open in their own app.",
-            )}
-          </p>
-          <Button
-            className="self-start"
-            size="sm"
-            disabled={!ready || add.isPending}
-            onClick={() => add.mutate()}
-            data-testid={`video-save-${album.id}`}
-          >
-            {add.isPending ? t("Adding") : t("Add video")}
-          </Button>
-        </div>
-      ) : null}
-
       {album.videos.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
           {t("No videos in this album yet.")}
         </p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {album.videos.map((v) => (
             <div key={v.id} className="relative">
               <VideoCard video={v} />
@@ -305,6 +282,129 @@ function AlbumPanel({
           ))}
         </div>
       )}
+
+      {/* The form is a RIGHT-SIDE drawer, not a block that shoves the album
+          down the page (owner 2026-08-26). */}
+      <Dialog
+        open={canManage && open}
+        onOpenChange={(o) => {
+          if (!o) onClose();
+        }}
+        variant="side"
+        ariaLabel={t("Add a video")}
+      >
+        <div
+          data-testid={`album-form-${album.id}`}
+          className="flex h-full flex-col gap-4 overflow-y-auto"
+        >
+          <DialogHeader>
+            <DialogTitle>{t("Add a video")}</DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              {album.title}
+            </p>
+          </DialogHeader>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium">{t("Event")} *</span>
+            <Input
+              value={event}
+              onChange={(e) => setEvent(e.target.value)}
+              placeholder={t("U-14 Boys Final")}
+              data-testid={`video-event-${album.id}`}
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium">{t("Day played")}</span>
+            <Input
+              type="date"
+              value={playedOn}
+              onChange={(e) => setPlayedOn(e.target.value)}
+              data-testid={`video-day-${album.id}`}
+            />
+          </label>
+
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium">{t("Tags")}</span>
+            <TagField
+              value={tags}
+              onChange={setTags}
+              suggestions={suggestedTags}
+              testid={`video-tags-${album.id}`}
+            />
+          </div>
+
+          {schools.length ? (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium">{t("Schools in this video")}</span>
+              <div
+                data-testid={`video-schools-${album.id}`}
+                className="flex max-h-44 flex-col gap-1 overflow-y-auto rounded-md border border-border p-2"
+              >
+                {schools.map((sc) => (
+                  <label
+                    key={sc.id}
+                    className="flex items-center gap-2 text-xs"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={picked.includes(sc.id)}
+                      onChange={(e) =>
+                        setPicked(
+                          e.target.checked
+                            ? [...picked, sc.id]
+                            : picked.filter((x) => x !== sc.id),
+                        )
+                      }
+                      className="h-3.5 w-3.5 rounded border-border accent-primary"
+                    />
+                    <span className="min-w-0 truncate">{sc.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-2">
+            <LinkField
+              label={t("YouTube link")}
+              value={youtube}
+              onChange={setYoutube}
+              testid={`video-yt-input-${album.id}`}
+            />
+            <LinkField
+              label={t("Facebook link")}
+              value={facebook}
+              onChange={setFacebook}
+              testid={`video-fb-input-${album.id}`}
+            />
+            <LinkField
+              label={t("Instagram link")}
+              value={instagram}
+              onChange={setInstagram}
+              testid={`video-ig-input-${album.id}`}
+            />
+            <p className="text-[0.6875rem] text-muted-foreground">
+              {t(
+                "At least one link. The YouTube one plays on the page; the others open in their own app.",
+              )}
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>
+              {t("Cancel")}
+            </Button>
+            <Button
+              disabled={!ready || add.isPending}
+              onClick={() => add.mutate()}
+              data-testid={`video-save-${album.id}`}
+            >
+              {add.isPending ? t("Adding") : t("Add video")}
+            </Button>
+          </DialogFooter>
+        </div>
+      </Dialog>
     </section>
   );
 }

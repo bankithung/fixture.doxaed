@@ -24,13 +24,13 @@ const PAYLOAD: PublicVideosPayload = {
           id: "v1", event: "U-14 Boys Final", note: "",
           youtube_url: "https://youtu.be/dQw4w9WgXcQ",
           facebook_url: "https://facebook.com/v/1",
-          instagram_url: "", youtube_id: "dQw4w9WgXcQ", position: 1,
+          instagram_url: "", youtube_id: "dQw4w9WgXcQ", position: 1, played_on: null, tags: [], schools: [],
         },
         {
           id: "v2", event: "Opening ceremony", note: "",
           youtube_url: "", facebook_url: "",
           instagram_url: "https://instagram.com/p/abc",
-          youtube_id: "", position: 2,
+          youtube_id: "", position: 2, played_on: null, tags: [], schools: [],
         },
       ],
     },
@@ -40,11 +40,16 @@ const PAYLOAD: PublicVideosPayload = {
         {
           id: "v3", event: "Open Boys Final", note: "",
           youtube_url: "https://youtu.be/xyz123abc", facebook_url: "",
-          instagram_url: "", youtube_id: "xyz123abc", position: 1,
+          instagram_url: "", youtube_id: "xyz123abc", position: 1, played_on: null, tags: [], schools: [],
         },
       ],
     },
   ],
+  facets: {
+    days: [{ day: "2026-08-28", count: 2 }],
+    tags: [{ tag: "Table Tennis", count: 2 }],
+    schools: [{ id: "i1", name: "Grace Academy", crest: "", count: 1 }],
+  },
   totals: { albums: 2, videos: 3 },
 };
 

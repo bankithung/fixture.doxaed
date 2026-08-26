@@ -10,6 +10,10 @@ export interface TournamentVideo {
   instagram_url: string;
   /** Parsed on the server from whatever shape the host pasted. "" = no embed. */
   youtube_id: string;
+  /** The day the footage is OF, not the day it was uploaded. */
+  played_on: string | null;
+  tags: string[];
+  schools: { id: string; name: string; crest: string }[];
   position: number;
 }
 
@@ -24,12 +28,29 @@ export interface VideoAlbum {
 
 export interface VideoAlbumsPayload {
   albums: VideoAlbum[];
+  /** Every registered school, for the picker. */
+  schools: { id: string; name: string; crest: string }[];
+  /** Tag suggestions read off the tournament's own category tree. */
+  suggested_tags: string[];
   can_manage: boolean;
 }
 
 export interface PublicVideosPayload {
-  tournament: { id: string; slug: string; name: string; status: string };
+  tournament: {
+    id: string;
+    slug: string;
+    name: string;
+    status: string;
+    time_zone?: string;
+  };
   albums: VideoAlbum[];
+  /** Counted from the videos ON THE PAGE, so a filter never offers an empty
+   * choice. */
+  facets: {
+    days: { day: string; count: number }[];
+    tags: { tag: string; count: number }[];
+    schools: { id: string; name: string; crest: string; count: number }[];
+  };
   totals: { albums: number; videos: number };
 }
 
@@ -39,6 +60,10 @@ export interface VideoInput {
   youtube_url?: string;
   facebook_url?: string;
   instagram_url?: string;
+  played_on?: string | null;
+  tags?: string[];
+  /** Institution ids of the schools in the footage. */
+  schools?: string[];
   position?: number;
 }
 

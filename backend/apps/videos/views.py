@@ -17,6 +17,8 @@ from apps.tournaments.models import Tournament, TournamentStatus
 from apps.tournaments.permissions import can_manage_tournament
 from apps.tournaments.scope import accessible_tournaments
 from apps.videos.models import TournamentVideo, VideoAlbum
+from apps.teams.models import Institution
+from apps.teams.services.crest import crest_url
 from apps.videos.services.links import clean_link, youtube_id
 
 _PUBLIC_STATUSES = [
@@ -25,7 +27,34 @@ _PUBLIC_STATUSES = [
 ]
 
 
+def clean_tags(raw) -> list[str]:
+    """Host labels, de-duplicated case-insensitively and capped.
+
+    Free text on purpose: nothing here decides what is worth tagging. The
+    tournament's own categories are offered as suggestions, not as a schema.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise DRFValidationError({"detail": "tags_must_be_a_list"})
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        label = str(item or "").strip()[:40]
+        if not label or label.lower() in seen:
+            continue
+        seen.add(label.lower())
+        out.append(label)
+    return out[:12]
+
+
 def video_payload(v: TournamentVideo) -> dict:
+    schools = [
+        {"id": str(i.id), "name": i.name, "crest": crest_url(i.logo_ref)}
+        for i in v.institutions.all()
+        if i.deleted_at is None
+    ]
+    schools.sort(key=lambda s: s["name"].lower())
     return {
         "id": str(v.id),
         "event": v.event,
@@ -35,6 +64,9 @@ def video_payload(v: TournamentVideo) -> dict:
         "instagram_url": v.instagram_url,
         # Parsed once, on the server: the page embeds the id, never the URL.
         "youtube_id": youtube_id(v.youtube_url),
+        "played_on": v.played_on.isoformat() if v.played_on else None,
+        "tags": list(v.tags or []),
+        "schools": schools,
         "position": v.position,
     }
 
@@ -57,7 +89,7 @@ def album_payload(a: VideoAlbum) -> dict:
 def _albums(tournament):
     return (
         VideoAlbum.objects.filter(tournament=tournament, deleted_at__isnull=True)
-        .prefetch_related("videos")
+        .prefetch_related("videos", "videos__institutions")
         .order_by("position", "created_at")
     )
 
@@ -74,6 +106,38 @@ def _clean_links(data) -> dict:
     return links
 
 
+def _played_on(raw):
+    """A date, or None. A malformed one is refused rather than silently
+    dropped — a video filed under the wrong day is worse than an unfiled one."""
+    from datetime import date
+
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    try:
+        return date.fromisoformat(s[:10])
+    except ValueError:
+        raise DRFValidationError({"detail": "played_on_must_be_a_date"}) from None
+
+
+def _set_schools(video, tournament, raw):
+    """Attach the schools in the footage, scoped to THIS tournament: an id from
+    another workspace names nothing here (invariant 2)."""
+    if raw is None:
+        return
+    if not isinstance(raw, list):
+        raise DRFValidationError({"detail": "schools_must_be_a_list"})
+    ids = [str(x).strip() for x in raw if str(x or "").strip()][:24]
+    found = list(
+        Institution.objects.filter(
+            id__in=ids, tournament=tournament, deleted_at__isnull=True,
+        )
+    )
+    if len(found) != len(set(ids)):
+        raise DRFValidationError({"detail": "unknown_school"})
+    video.institutions.set(found)
+
+
 class TournamentVideoAlbumsView(GenericAPIView):
     """`GET/POST /api/tournaments/{id}/video-albums/` — the host's albums."""
 
@@ -85,9 +149,27 @@ class TournamentVideoAlbumsView(GenericAPIView):
         return Tournament.objects.select_related("organization").get(id=tournament_id)
 
     def get(self, request, tournament_id):
+        from apps.tournaments.services.sports import iter_leaves
+
         t = self._tournament(request, tournament_id)
+        schools = [
+            {"id": str(i.id), "name": i.name, "crest": crest_url(i.logo_ref)}
+            for i in Institution.objects.filter(
+                tournament=t, deleted_at__isnull=True,
+            ).order_by("name")
+        ]
+        # Tag SUGGESTIONS off the host's own category tree — every sport and
+        # every category, offered as one-tap chips. They are suggestions: the
+        # host types anything they like.
+        suggested: list[str] = []
+        for leaf in iter_leaves(t.sports):
+            for label in [leaf["sport_name"], *leaf["path"]]:
+                if label and label not in suggested:
+                    suggested.append(str(label))
         return Response({
             "albums": [album_payload(a) for a in _albums(t)],
+            "schools": schools,
+            "suggested_tags": suggested[:40],
             "can_manage": can_manage_tournament(request.user, t),
         })
 
@@ -176,10 +258,13 @@ class TournamentVideosView(GenericAPIView):
             album=a,
             event=event,
             note=str(request.data.get("note") or "").strip()[:2000],
+            played_on=_played_on(request.data.get("played_on")),
+            tags=clean_tags(request.data.get("tags")),
             position=int(request.data.get("position") or 0),
             created_by=request.user,
             **_clean_links(request.data),
         )
+        _set_schools(v, t, request.data.get("schools"))
         return Response(video_payload(v), status=201)
 
 
@@ -212,6 +297,12 @@ class TournamentVideoDetailView(GenericAPIView):
             v.note = str(request.data.get("note") or "").strip()[:2000]
         if "position" in request.data:
             v.position = int(request.data.get("position") or 0)
+        if "played_on" in request.data:
+            v.played_on = _played_on(request.data.get("played_on"))
+        if "tags" in request.data:
+            v.tags = clean_tags(request.data.get("tags"))
+        if "schools" in request.data:
+            _set_schools(v, v.album.tournament, request.data.get("schools"))
         if any(k in request.data for k in
                ("youtube_url", "facebook_url", "instagram_url")):
             merged = {
@@ -223,8 +314,8 @@ class TournamentVideoDetailView(GenericAPIView):
             for k, val in _clean_links(merged).items():
                 setattr(v, k, val)
         v.save(update_fields=[
-            "event", "note", "position", "youtube_url", "facebook_url",
-            "instagram_url", "updated_at",
+            "event", "note", "position", "played_on", "tags", "youtube_url",
+            "facebook_url", "instagram_url", "updated_at",
         ])
         return Response(video_payload(v))
 
@@ -253,13 +344,40 @@ class PublicTournamentVideosView(GenericAPIView):
             raise NotFound("tournament_not_found")
         albums = [album_payload(a) for a in _albums(t)]
         albums = [a for a in albums if a["videos"]]
+        videos = [v for a in albums for v in a["videos"]]
+        # Facets are counted from the videos ON THE PAGE, so a filter can never
+        # offer a choice that turns out to be empty.
+        days: dict[str, int] = {}
+        tags: dict[str, int] = {}
+        schools: dict[str, dict] = {}
+        for v in videos:
+            if v["played_on"]:
+                days[v["played_on"]] = days.get(v["played_on"], 0) + 1
+            for tag in v["tags"]:
+                tags[tag] = tags.get(tag, 0) + 1
+            for s_ in v["schools"]:
+                row = schools.setdefault(s_["id"], {**s_, "count": 0})
+                row["count"] += 1
         return Response({
             "tournament": {
                 "id": str(t.id), "slug": t.slug, "name": t.name, "status": t.status,
+                "time_zone": t.time_zone,
             },
             "albums": albums,
+            "facets": {
+                "days": [
+                    {"day": d, "count": n} for d, n in sorted(days.items())
+                ],
+                "tags": [
+                    {"tag": k, "count": n}
+                    for k, n in sorted(tags.items(), key=lambda kv: (-kv[1], kv[0].lower()))
+                ],
+                "schools": sorted(
+                    schools.values(), key=lambda r: r["name"].lower()
+                ),
+            },
             "totals": {
                 "albums": len(albums),
-                "videos": sum(a["video_count"] for a in albums),
+                "videos": len(videos),
             },
         })
