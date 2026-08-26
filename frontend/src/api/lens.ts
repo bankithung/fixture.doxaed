@@ -161,6 +161,8 @@ export interface LensStoryFrame {
   thumb_url: string;
   caption: string;
   position: number;
+  /** A frame can win a prize of its own, independently of its story. */
+  award_category?: string;
   created_at: string;
   status?: LensPhotoStatus;
 }

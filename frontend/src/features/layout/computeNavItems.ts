@@ -1,5 +1,6 @@
 import {
   ExternalLink,
+  Film,
   BarChart3,
   ClipboardCheck,
   Building2,
@@ -314,6 +315,16 @@ export function computeTournamentNav(
             label: t("Guest Lens"),
             href: routes.tournamentLens(tournamentId),
             icon: Camera,
+          }
+        : null,
+      // Videos: the host's albums of published footage (YouTube, Facebook,
+      // Instagram links) — managers only, since it is a publishing surface.
+      canManage
+        ? {
+            key: "videos",
+            label: t("Videos"),
+            href: routes.tournamentVideos(tournamentId),
+            icon: Film,
           }
         : null,
       // The fan-facing site, one hop away (replaces the workspace ribbon).

@@ -145,6 +145,12 @@ export const routes = {
   /** Public medal tally: placings, points, champions, students (no login). */
   publicResults: (slug: string, id: string) =>
     `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/results`,
+  /** Public video albums: the meet's footage, wherever it was published. */
+  publicVideos: (slug: string, id: string) =>
+    `/t/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/videos`,
+  /** Host page: the tournament's video albums. */
+  tournamentVideos: (id: string) =>
+    `/tournaments/${encodeURIComponent(id)}/videos`,
   /** Guest Lens campaign list (manager landing: all photo campaigns). */
   tournamentLens: (id: string) =>
     `/tournaments/${encodeURIComponent(id)}/lens`,

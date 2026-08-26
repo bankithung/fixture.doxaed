@@ -8,7 +8,7 @@ import {
   type LiveStatRow,
 } from "@/api/live";
 import { routes } from "@/lib/routes";
-import { isSetSport, liveSetView } from "@/lib/setDisplay";
+import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useEventStream } from "@/lib/useEventStream";
@@ -590,8 +590,13 @@ export function MatchScoreline({
               : t(match.current_period.replace(/_/g, " "))}
           </span>
         ) : null}
-        <CompetitionChips match={match} />
-        <span className="ml-auto text-xs text-muted-foreground">
+        {/* One line. The chips wrapped four rows deep for a four-segment
+            category and pushed the scoreboard down the page (owner
+            2026-08-26). */}
+        <span className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden">
+          <CompetitionChips match={match} />
+        </span>
+        <span className="ml-auto shrink-0 whitespace-nowrap text-xs text-muted-foreground">
           {kickoff ?? ""}
           {match.venue ? `${kickoff ? " · " : ""}${match.venue}` : ""}
         </span>
@@ -741,7 +746,6 @@ export function MatchPanel({
   const stats = snap.stats ?? [];
   const h2h = snap.h2h ?? [];
   const events = snap.events ?? [];
-  const periodTerm = match.sport_meta?.terms.period ?? t("Set");
   const kickoff = fmtDateTime(match.scheduled_at, tz);
 
   const sportKey = match.sport_meta?.key ?? (match.sport || "football");
@@ -801,14 +805,8 @@ export function MatchPanel({
               <dd className="font-medium">{match.venue}</dd>
             </div>
           ) : null}
-          <div className="flex items-center gap-2">
-            <dt className="w-24 shrink-0 text-xs text-muted-foreground">
-              {t("Competition")}
-            </dt>
-            <dd>
-              <CompetitionChips match={match} />
-            </dd>
-          </div>
+          {/* No Competition row: the header names it, and repeating it here
+              printed the same four chips a second time (owner 2026-08-26). */}
         </dl>
       </section>
 
@@ -831,41 +829,9 @@ export function MatchPanel({
         </section>
       ) : null}
 
-      {isSetSport(match) && (match.set_scores?.length ?? 0) > 0 ? (
-        <section className="rounded-xl border border-border bg-card shadow-sm">
-          <div className="border-b border-border px-4 py-3">
-            <h2 className={OVERLINE}>
-              {t("Score by")} {periodTerm.toLowerCase()}
-            </h2>
-          </div>
-          <ul className="flex flex-col divide-y divide-border">
-            {(match.set_scores ?? []).map((s, i) => (
-              <li
-                key={i}
-                className="flex items-center justify-between px-4 py-2 text-sm"
-              >
-                <span className="text-xs text-muted-foreground">
-                  {periodTerm} {i + 1}
-                </span>
-                <span className="font-tabular">
-                  <span
-                    className={cn((s[0] ?? 0) > (s[1] ?? 0) && "font-semibold")}
-                  >
-                    {s[0] ?? 0}
-                  </span>
-                  <span className="mx-1.5 text-muted-foreground">-</span>
-                  <span
-                    className={cn((s[1] ?? 0) > (s[0] ?? 0) && "font-semibold")}
-                  >
-                    {s[1] ?? 0}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
+      {/* No "Score by game" section: the finished sets already sit under the
+          scoreboard above, and printing them twice was the biggest source of
+          stacking on this page (owner 2026-08-26). */}
       {events.length > 0 ? (
         <section className="rounded-xl border border-border bg-card shadow-sm">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">

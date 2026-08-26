@@ -121,7 +121,23 @@ export function AlbumPanel({
         openRef: "",
         storyId: st.id,
       }));
-    return [...fromWall, ...fromStories];
+    // A prize declared on a single FRAME of a story. The wall excludes story
+    // frames by design, so an award given to one was invisible everywhere
+    // (owner 2026-08-26) — it belongs here as much as any other winner.
+    const fromFrames = (q.data?.stories ?? []).flatMap((st) =>
+      st.photos
+        .filter((f) => f.award_category && live.has(f.award_category))
+        .map((f) => ({
+          key: `frame-${f.upload_ref}`,
+          award: f.award_category ?? "",
+          thumb: f.thumb_url,
+          school: st.institution_name,
+          title: f.caption || st.title,
+          openRef: "",
+          storyId: st.id,
+        })),
+    );
+    return [...fromWall, ...fromStories, ...fromFrames];
   }, [q.data, awarded]);
 
   // Photo-story entries render as ONE unit each (title + frames in order).

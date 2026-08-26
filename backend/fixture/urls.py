@@ -18,6 +18,7 @@ from django.conf import settings
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from apps.videos.views import PublicTournamentVideosView
 from apps.matches.public_views import (
     MyOverviewView,
     MyTodayView,
@@ -185,6 +186,11 @@ api_v1 = [
         "public/tournaments/<slug:slug>/<uuid:tournament_id>/entries/",
         PublicTournamentEntriesView.as_view(),
         name="public-tournament-entries",
+    ),
+    path(
+        "public/tournaments/<slug:slug>/<uuid:tournament_id>/videos/",
+        PublicTournamentVideosView.as_view(),
+        name="public-tournament-videos",
     ),
     path(
         "public/tournaments/<slug:slug>/<uuid:tournament_id>/results/",

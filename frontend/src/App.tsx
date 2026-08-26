@@ -96,6 +96,8 @@ const LiveViewerPage = lazy(() => import("@/features/live/LiveViewerPage").then(
 const PublicStandingsPage = lazy(() => import("@/features/live/PublicStandingsPage").then((m) => ({ default: m.PublicStandingsPage })));
 const PublicEntriesPage = lazy(() => import("@/features/fixtures/PublicEntriesPage").then((m) => ({ default: m.PublicEntriesPage })));
 const PublicResultsPage = lazy(() => import("@/features/results/PublicResultsPage").then((m) => ({ default: m.PublicResultsPage })));
+const PublicVideosPage = lazy(() => import("@/features/videos/PublicVideosPage").then((m) => ({ default: m.PublicVideosPage })));
+const VideoAlbumsPage = lazy(() => import("@/features/videos/VideoAlbumsPage").then((m) => ({ default: m.VideoAlbumsPage })));
 const PublicBracketRedirect = lazy(() => import("@/features/live/PublicBracketRedirect").then((m) => ({ default: m.PublicBracketRedirect })));
 const PublicTeamPage = lazy(() => import("@/features/live/PublicTeamPage").then((m) => ({ default: m.PublicTeamPage })));
 const PublicSchoolPage = lazy(() => import("@/features/live/PublicSchoolPage").then((m) => ({ default: m.PublicSchoolPage })));
@@ -226,6 +228,9 @@ export default function App(): React.ReactElement {
                 path="/t/:slug/:id/results"
                 element={<PublicResultsPage />}
               />
+              {/* The meet's footage, wherever it was published (owner
+                  2026-08-26). */}
+              <Route path="/t/:slug/:id/videos" element={<PublicVideosPage />} />
               <Route path="/t/:slug/:id/live" element={<PublicLiveRedirect />} />
               <Route path="/t/:slug/:id/bracket" element={<PublicBracketRedirect />} />
               <Route path="/t/:slug/:id/team/:teamId" element={<PublicTeamPage />} />
@@ -310,6 +315,7 @@ export default function App(): React.ReactElement {
                   <Route path="streams/setup" element={<StreamSetupPage />} />
                   <Route path="leaders" element={<LeadersPage />} />
                   <Route path="changes" element={<ChangeHistoryPage />} />
+                  <Route path="videos" element={<VideoAlbumsPage />} />
                   <Route path="lens" element={<LensCampaignListPage />} />
                   <Route path="lens/:campaignId" element={<LensConsolePage />} />
                   <Route path="settings" element={<SettingsRoute />} />

@@ -284,6 +284,7 @@ describe("computeTournamentNav", () => {
       "streams",
       "directory",
       "lens",
+      "videos",
       "public",
     ]);
     // Public page deep-links with the TOURNAMENT slug (slug+UUID pair) —

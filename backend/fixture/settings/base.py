@@ -66,6 +66,7 @@ LOCAL_APPS = [
     "apps.live",
     "apps.assistant",
     "apps.badges",
+    "apps.videos",
     "apps.lens",
     "apps.streaming",
 ]

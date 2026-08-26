@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from django.urls import path
 
+from apps.videos.views import (
+    TournamentVideoAlbumDetailView,
+    TournamentVideoAlbumsView,
+    TournamentVideoDetailView,
+    TournamentVideosView,
+)
+
 from apps.disputes.views import TournamentDisputeView
 from apps.fixtures.views import (
     AdvancementRefireView,
@@ -134,6 +141,26 @@ urlpatterns = [
         "<uuid:tournament_id>/clone/",
         TournamentCloneView.as_view(),
         name="tournament-clone",
+    ),
+    path(
+        "<uuid:tournament_id>/video-albums/",
+        TournamentVideoAlbumsView.as_view(),
+        name="tournament-video-albums",
+    ),
+    path(
+        "<uuid:tournament_id>/video-albums/<uuid:album_id>/",
+        TournamentVideoAlbumDetailView.as_view(),
+        name="tournament-video-album-detail",
+    ),
+    path(
+        "<uuid:tournament_id>/video-albums/<uuid:album_id>/videos/",
+        TournamentVideosView.as_view(),
+        name="tournament-videos",
+    ),
+    path(
+        "<uuid:tournament_id>/videos/<uuid:video_id>/",
+        TournamentVideoDetailView.as_view(),
+        name="tournament-video-detail",
     ),
     path(
         "<uuid:tournament_id>/awards/",

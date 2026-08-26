@@ -703,6 +703,11 @@ def _story_payload(s, *, own: bool = False) -> dict:
                 "thumb_url": _media_url(ph.thumb.name),
                 "caption": ph.caption,
                 "position": ph.position,
+                # A frame can hold a prize of its own. Without this the award a
+                # host declared on a photo INSIDE a story was invisible
+                # everywhere: the wall excludes story frames by design, so
+                # nothing ever carried it (owner 2026-08-26).
+                "award_category": ph.award_category,
                 "created_at": ph.created_at.isoformat(),
                 **({} if own else {"status": ph.status}),
             }
