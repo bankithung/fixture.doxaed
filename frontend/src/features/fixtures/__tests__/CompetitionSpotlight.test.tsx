@@ -193,6 +193,106 @@ describe("CompetitionSpotlight", () => {
     expect(screen.getByTestId("competition-spotlight")).toHaveAttribute("data-board", "off");
   });
 
+  it("puts the state and the way out at the very top of the board", async () => {
+    // Owner 2026-08-26: "the exit full screen and the latest result text
+    // should be at the very top". The section used to centre ALL its children,
+    // so the header floated in the middle of the screen.
+    Object.defineProperty(Element.prototype, "requestFullscreen", {
+      configurable: true, writable: true, value: vi.fn().mockResolvedValue(undefined),
+    });
+    mount([m({ id: "done", status: "completed", home_score: 2, away_score: 0 })]);
+    await userEvent.click(screen.getByTestId("spotlight-fullscreen"));
+
+    const section = screen.getByTestId("competition-spotlight");
+    const bar = screen.getByTestId("spotlight-fullscreen").parentElement!;
+    // The bar is the FIRST child of the board, and it does not grow.
+    expect(section.firstElementChild).toBe(bar);
+    expect(bar.className).toMatch(/shrink-0/);
+    expect(bar).toHaveTextContent("Latest result");
+    expect(bar).toHaveTextContent("Exit full screen");
+    // The body below it is what takes the leftover height.
+    expect(section.children[1]!.className).toMatch(/flex-1/);
+  });
+
+  it("shows a school's whole name on the board rather than cutting it", async () => {
+    // Owner 2026-08-26: "the school names should show full".
+    Object.defineProperty(Element.prototype, "requestFullscreen", {
+      configurable: true, writable: true, value: vi.fn().mockResolvedValue(undefined),
+    });
+    const long = "Holy Cross Higher Secondary School ST-1";
+    mount([
+      m({
+        id: "done",
+        status: "completed",
+        home_score: 0,
+        away_score: 2,
+        away: { id: "hc", name: long, short_name: "HC", school: "Holy Cross" },
+      }),
+    ]);
+    await userEvent.click(screen.getByTestId("spotlight-fullscreen"));
+
+    const name = screen.getByText(long);
+    expect(name.className).not.toMatch(/truncate/);
+    expect(name.className).toMatch(/overflow-wrap/);
+  });
+
+  it("scales with the viewport instead of with a breakpoint", async () => {
+    // Owner 2026-08-26: "it need to be bigger and responsive". One board has
+    // to fill a phone at the court and a hall screen 20m away.
+    Object.defineProperty(Element.prototype, "requestFullscreen", {
+      configurable: true, writable: true, value: vi.fn().mockResolvedValue(undefined),
+    });
+    mount([m({ id: "done", status: "completed", home_score: 2, away_score: 0 })]);
+    await userEvent.click(screen.getByTestId("spotlight-fullscreen"));
+
+    const score = screen.getByLabelText("Open the match centre");
+    expect(score.className).toMatch(/clamp\(/);
+    expect(score.className).toMatch(/vw/);
+  });
+
+  it("names the competition once, and the kickoff once", async () => {
+    // A knockout's group_label IS its competition label, so the meta line was
+    // reprinting the heading; and an unplayed match wore its kickoff as the
+    // centrepiece AND again underneath itself.
+    Object.defineProperty(Element.prototype, "requestFullscreen", {
+      configurable: true, writable: true, value: vi.fn().mockResolvedValue(undefined),
+    });
+    mount([
+      m({
+        id: "next",
+        leaf_label: "Sepak Takraw · U-14 · Boys",
+        group_label: "Sepak Takraw · U-14 · Boys · 3rd Place",
+        scheduled_at: "2026-08-29T02:40:00Z",
+      }),
+    ]);
+    await userEvent.click(screen.getByTestId("spotlight-fullscreen"));
+
+    const meta = screen.getByTestId("spotlight-meta");
+    // What the group ADDS survives; the competition it repeats does not.
+    expect(meta).toHaveTextContent("3rd Place");
+    expect(meta).not.toHaveTextContent("Sepak Takraw");
+    // The kickoff is the centrepiece of an unplayed match, so it is not under
+    // it as well.
+    expect(meta).not.toHaveTextContent("08:10");
+    expect(screen.getByLabelText("Open the match centre")).toHaveTextContent("08:10");
+  });
+
+  it("keeps the kickoff in the meta line once a match HAS been played", async () => {
+    mount([
+      m({
+        id: "done",
+        status: "completed",
+        home_score: 2,
+        away_score: 0,
+        scheduled_at: "2026-08-29T08:15:00Z",
+        venue: "Mph · T1",
+      }),
+    ]);
+    const meta = screen.getByTestId("spotlight-meta");
+    expect(meta).toHaveTextContent("13:45");
+    expect(meta).toHaveTextContent("Mph · T1");
+  });
+
   it("moves to the next match on its own once the live one finishes", () => {
     // No timer and no stored state: the pick is derived, so the next payload
     // moves the board. This is "once done we will show the next match".

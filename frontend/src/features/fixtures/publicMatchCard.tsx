@@ -124,11 +124,17 @@ export function TeamName({
   side,
   className,
   crestSize = "xs",
+  wrap = false,
 }: {
   side: { id: string; name: string; crest?: string } | null | undefined;
   className?: string;
   /** Scales with the surface: rows stay "xs", the live hero goes large. */
   crestSize?: CrestSize;
+  /** Let a long school name WRAP instead of truncating (owner 2026-08-26:
+   * "the school names should show full"). A row cannot afford this — its
+   * columns would jump height — but a hero can, and "Holy Cross Higher
+   * Secon…" is not how a parent recognises their child's team. */
+  wrap?: boolean;
 }): React.ReactElement {
   const { slug = "", id = "" } = useParams();
   if (!side) return <span className={className}>{t("TBD")}</span>;
@@ -145,7 +151,14 @@ export function TeamName({
     >
       <TeamCrest src={side.crest} name={side.name} size={crestSize} />
       {/* Truncation lives on the name, not the row: the crest never shrinks. */}
-      <span className="truncate group-hover:underline">{side.name}</span>
+      <span
+        className={cn(
+          "group-hover:underline",
+          wrap ? "min-w-0 [overflow-wrap:anywhere]" : "truncate",
+        )}
+      >
+        {side.name}
+      </span>
     </Link>
   );
 }

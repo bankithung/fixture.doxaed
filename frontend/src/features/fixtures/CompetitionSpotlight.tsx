@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Clock, Maximize2, MapPin, Minimize2 } from "lucide-react";
-import type { PublicScheduleMatch } from "@/api/tournaments";
+import { Maximize2, Minimize2 } from "lucide-react";
+import type { PublicScheduleMatch, PublicScheduleSide } from "@/api/tournaments";
+import { TeamCrest } from "@/components/ui/TeamCrest";
 import { WatchLiveLink } from "@/features/live/WatchLiveLink";
 import { routes } from "@/lib/routes";
 import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import {
+  shortGroup,
   spotlightNextUp,
   spotlightPick,
   type SpotlightKind,
@@ -22,20 +24,10 @@ import { LivePulse, TeamName, fmtKickoff } from "./publicMatchCard";
  *
  * It replaces the live band on a competition page. The band was a list of
  * whatever happened to be live, which on a category page is either one match
- * or none — and on a category with nothing live it was simply absent, so the
- * sepak page opened on a wall of finished group tables with no answer to "what
- * is happening now". The spotlight always has an answer: live, else next, else
+ * or none — and with nothing live it rendered nothing at all, so the sepak
+ * page opened on a wall of finished group tables with no answer to "what is
+ * happening now". The spotlight always has an answer: live, else next, else
  * the last result (`spotlightPick`).
- *
- * **Full screen is the point, not a flourish.** This is what goes on the hall's
- * projector or a TV beside the court, so the button asks the browser for real
- * fullscreen (`requestFullscreen`, which hides the browser's own chrome) AND
- * lays the section out as a fixed full-viewport board. Both, because the two
- * fail in different ways: the API is refused without a user gesture, is absent
- * on older iOS Safari, and does nothing inside an iframe, while the CSS alone
- * would leave the address bar and tab strip on the projector. The CSS layer is
- * what the state drives, so the board is always full-viewport even when the
- * API declines.
  *
  * **It advances by itself**, because it holds no state of its own: the pick is
  * derived from the payload on every render, and the page already refreshes
@@ -43,9 +35,40 @@ import { LivePulse, TeamName, fmtKickoff } from "./publicMatchCard";
  * next one takes the board on the following tick, which is what "once done we
  * will show the next match" asks for, with no timer to drift.
  *
- * On the board, and only there, the match after this one is named underneath.
- * A spectator watching a screen cannot scroll it, so the one thing they would
- * have gone looking for is put in front of them.
+ * ## The board (owner 2026-08-26, second pass)
+ *
+ * Full screen is not a bigger card, it is a different surface: a projector or
+ * a TV beside the court, read from the back of a hall by people who cannot
+ * touch it. Four rules come out of that, each from something the first cut got
+ * wrong:
+ *
+ * 1. **Three bands, not one centred stack.** The section used to centre ALL
+ *    its children, so the state and the exit button floated in the middle of
+ *    the screen ("the exit full screen and the latest result text should be at
+ *    the very top"). The board is now a top bar, a body that takes the space
+ *    that is left, and a bottom bar — the two bars pinned, the match centred
+ *    between them.
+ * 2. **It scales with the screen, not with a breakpoint** ("it need to be
+ *    bigger and responsive"). Every size on the board is `clamp(min, vw, max)`,
+ *    so one board fills a phone held up at the court and a 4K screen across a
+ *    hall without a media query between them.
+ * 3. **A school's name is never cut** ("the school names should show full").
+ *    Names wrap here instead of truncating: "Holy Cross Higher Secondary
+ *    School ST-1" is how a parent recognises their child's team, and
+ *    "Holy Cross Higher Secon…" is not. The sides stack the crest above the
+ *    name so the full name has the whole column to wrap into.
+ * 4. **Nothing is said twice.** The competition is named in the top bar, so
+ *    the meta line drops it and keeps only what the group label ADDS
+ *    ("3rd Place") via `shortGroup`; a kickoff shown as the centrepiece of an
+ *    unplayed match is not repeated underneath itself.
+ *
+ * The button asks the browser for real fullscreen (`requestFullscreen`, which
+ * hides the browser's own chrome) AND lays the section out as a fixed
+ * full-viewport board. Both, because the two fail differently: the API is
+ * refused without a user gesture, is absent on older iOS Safari, and does
+ * nothing inside an iframe, while the CSS alone would leave the address bar
+ * and tab strip on the projector. State drives the CSS layer, so the board is
+ * always full-viewport even when the API declines.
  */
 
 const KIND_LABEL: Record<SpotlightKind, string> = {
@@ -54,10 +77,49 @@ const KIND_LABEL: Record<SpotlightKind, string> = {
   done: "Latest result",
 };
 
-/** Does this browser offer real fullscreen, and are we in it? Kept in one
- * place so the component never branches on the vendor-prefix zoo inline. */
+/** Every size on the board, in one place. `clamp` rather than breakpoints:
+ * this surface is read from 1m away on a phone and from 20m away on a hall
+ * screen, and the middle term is what carries it between the two. */
+const BOARD = {
+  bar: "text-[clamp(0.875rem,1.7vw,2rem)]",
+  name: "text-[clamp(1.125rem,3.4vw,4rem)]",
+  score: "text-[clamp(3.5rem,15vw,16rem)]",
+  clock: "text-[clamp(2.5rem,10vw,10rem)]",
+  meta: "text-[clamp(0.875rem,1.9vw,2rem)]",
+  sets: "text-[clamp(0.875rem,1.6vw,1.75rem)]",
+  crest:
+    "h-[clamp(3rem,8vw,9rem)] w-[clamp(3rem,8vw,9rem)] text-[clamp(0.875rem,2.2vw,2.5rem)]",
+} as const;
+
 function fullscreenElement(): Element | null {
   return document.fullscreenElement ?? null;
+}
+
+/** One side on the BOARD: crest above the name, name in full. Deliberately not
+ * `TeamName` — that is a row component, it truncates and it links, and a
+ * screen nobody can tap has no use for either. */
+function BoardSide({
+  side,
+}: {
+  side: PublicScheduleSide | null;
+}): React.ReactElement {
+  return (
+    <div className="flex min-w-0 flex-col items-center gap-[clamp(0.5rem,1.5vw,1.5rem)] text-center">
+      <TeamCrest
+        src={side?.crest}
+        name={side?.name ?? ""}
+        className={BOARD.crest}
+      />
+      <span
+        className={cn(
+          "max-w-full font-semibold leading-tight [overflow-wrap:anywhere]",
+          BOARD.name,
+        )}
+      >
+        {side?.name ?? t("TBD")}
+      </span>
+    </div>
+  );
 }
 
 export function CompetitionSpotlight({
@@ -98,6 +160,7 @@ export function CompetitionSpotlight({
   if (!pick) return null;
   const { match: m, kind } = pick;
   const next = board ? spotlightNextUp(matches, m) : null;
+  const comp = title || m.leaf_label;
 
   const toggle = (): void => {
     const goingIn = !board;
@@ -106,7 +169,8 @@ export function CompetitionSpotlight({
     // board up, and a browser already out of fullscreen rejects the exit.
     try {
       if (goingIn) void ref.current?.requestFullscreen?.().catch(() => {});
-      else if (fullscreenElement()) void document.exitFullscreen?.().catch(() => {});
+      else if (fullscreenElement())
+        void document.exitFullscreen?.().catch(() => {});
     } catch {
       /* unsupported: the CSS board carries it */
     }
@@ -118,161 +182,165 @@ export function CompetitionSpotlight({
     : [m.home_score ?? 0, m.away_score ?? 0];
   const played = kind !== "next";
   const hasPens = m.home_pens != null && m.away_pens != null;
+  const kickoff = fmtKickoff(m.scheduled_at, timeZone);
+  // What the group label ADDS beyond the competition — "3rd Place", "Group A".
+  // A knockout's group_label IS its competition label, so unfiltered it
+  // reprinted the heading one line below itself.
+  const stageBit = shortGroup(m.group_label, m.leaf_label);
+  // An unplayed match wears its kickoff as the centrepiece; repeating it in the
+  // meta line under itself is the same fact twice.
+  const meta = [stageBit, played ? kickoff : "", m.venue].filter(Boolean);
 
-  return (
-    <section
-      ref={ref}
-      data-testid="competition-spotlight"
-      data-kind={kind}
-      data-board={board ? "on" : "off"}
-      className={cn(
-        "flex flex-col gap-3 border-b border-border bg-card p-3 sm:p-4",
-        board &&
-          "fixed inset-0 z-50 justify-center overflow-y-auto border-0 p-6 sm:p-10",
-      )}
-    >
-      <div className="flex items-center gap-2">
-        {kind === "live" ? <LivePulse /> : null}
-        <h2
-          className={cn(
-            "text-sm font-semibold",
-            board && "text-lg sm:text-2xl",
-            kind === "live" && "text-primary",
-          )}
-        >
-          {t(KIND_LABEL[kind])}
-        </h2>
-        {board && title ? (
-          <span className="truncate text-sm text-muted-foreground sm:text-lg">
-            {title}
-          </span>
-        ) : null}
-        <button
-          type="button"
-          data-testid="spotlight-fullscreen"
-          aria-pressed={board}
-          onClick={toggle}
-          className="ml-auto inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {board ? (
-            <Minimize2 aria-hidden="true" className="h-4 w-4" />
-          ) : (
-            <Maximize2 aria-hidden="true" className="h-4 w-4" />
-          )}
-          {board ? t("Exit full screen") : t("Full screen")}
-        </button>
-      </div>
-
-      {/* The matchup. One column on a phone, three from `sm` up, and on the
-          board it grows into the space instead of sitting in a small card. */}
-      <div
+  const heading = (
+    <>
+      {kind === "live" ? <LivePulse /> : null}
+      <h2
         className={cn(
-          "mx-auto grid w-full grid-cols-1 items-center gap-3 sm:grid-cols-[1fr_auto_1fr] sm:gap-6",
-          board ? "max-w-6xl gap-6 sm:gap-12" : "max-w-xl",
+          "font-semibold",
+          board ? BOARD.bar : "text-sm",
+          kind === "live" && "text-primary",
         )}
       >
-        <div className="min-w-0 text-center sm:text-right">
+        {t(KIND_LABEL[kind])}
+      </h2>
+      {board ? (
+        <span className={cn("min-w-0 truncate text-muted-foreground", BOARD.bar)}>
+          {comp}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        data-testid="spotlight-fullscreen"
+        aria-pressed={board}
+        onClick={toggle}
+        className={cn(
+          "ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          board
+            ? "h-[clamp(2.25rem,4vw,4rem)] px-[clamp(0.75rem,1.5vw,1.5rem)] text-[clamp(0.75rem,1.5vw,1.5rem)]"
+            : "h-9 px-2.5 text-xs",
+        )}
+      >
+        {board ? (
+          <Minimize2 aria-hidden="true" className="h-[1em] w-[1em]" />
+        ) : (
+          <Maximize2 aria-hidden="true" className="h-[1em] w-[1em]" />
+        )}
+        {board ? t("Exit full screen") : t("Full screen")}
+      </button>
+    </>
+  );
+
+  const centre = played ? (
+    <Link
+      to={routes.liveViewer(m.id)}
+      aria-label={t("Open the match centre")}
+      className={cn(
+        "block rounded-md px-1 font-tabular font-semibold tabular-nums leading-none transition-colors hover:text-primary",
+        board ? BOARD.score : "text-4xl sm:text-6xl",
+      )}
+    >
+      {score[0]}
+      <span className="px-[0.15em] text-muted-foreground">-</span>
+      {score[1]}
+    </Link>
+  ) : (
+    <Link
+      to={routes.liveViewer(m.id)}
+      aria-label={t("Open the match centre")}
+      className={cn(
+        "block rounded-md px-1 font-tabular font-semibold leading-none text-muted-foreground transition-colors hover:text-primary",
+        board ? BOARD.clock : "text-3xl sm:text-4xl",
+      )}
+    >
+      {kickoff}
+    </Link>
+  );
+
+  const body = (
+    <>
+      <div
+        className={cn(
+          "mx-auto grid w-full grid-cols-1 items-center sm:grid-cols-[1fr_auto_1fr]",
+          board
+            ? "max-w-[95vw] gap-[clamp(0.75rem,3vw,4rem)]"
+            : "max-w-xl gap-3 sm:gap-6",
+        )}
+      >
+        {board ? (
+          <BoardSide side={m.home} />
+        ) : (
           <TeamName
             side={m.home}
-            crestSize={board ? "xl" : "lg"}
-            className={cn(
-              "mx-auto justify-center text-sm font-medium sm:mx-0 sm:ml-auto sm:justify-end sm:text-base",
-              board && "text-xl sm:text-3xl",
-            )}
+            crestSize="lg"
+            wrap
+            className="mx-auto text-sm font-medium sm:mx-0 sm:ml-auto sm:text-base"
           />
-        </div>
-        <div className="text-center">
-          {played ? (
-            <Link
-              to={routes.liveViewer(m.id)}
-              aria-label={t("Open the match centre")}
-              className={cn(
-                "block rounded-md px-1 font-tabular font-semibold tabular-nums transition-colors hover:text-primary",
-                board ? "text-6xl sm:text-[8rem]" : "text-4xl sm:text-6xl",
-              )}
-            >
-              {score[0]}
-              <span className="px-2 text-muted-foreground">-</span>
-              {score[1]}
-            </Link>
-          ) : (
-            <Link
-              to={routes.liveViewer(m.id)}
-              aria-label={t("Open the match centre")}
-              className={cn(
-                "block rounded-md px-1 font-tabular font-semibold text-muted-foreground transition-colors hover:text-primary",
-                board ? "text-5xl sm:text-7xl" : "text-3xl sm:text-4xl",
-              )}
-            >
-              {fmtKickoff(m.scheduled_at, timeZone)}
-            </Link>
-          )}
+        )}
+        <div className="flex flex-col items-center gap-[0.35em]">
+          {centre}
           {sv ? (
             <p
               className={cn(
-                "mt-1 font-tabular text-sm text-muted-foreground",
-                board && "text-base sm:text-2xl",
+                "font-tabular text-muted-foreground",
+                board ? BOARD.sets : "text-sm",
               )}
             >
               {t("Set")} {sv.setNo} · {t("Sets")} {sv.sets[0]}-{sv.sets[1]}
             </p>
           ) : null}
           {hasPens ? (
-            <p className="mt-1 font-tabular text-xs text-muted-foreground">
+            <p
+              className={cn(
+                "font-tabular text-muted-foreground",
+                board ? BOARD.sets : "text-xs",
+              )}
+            >
               {t("Pens")} {m.home_pens}-{m.away_pens}
             </p>
           ) : null}
+          {sv && sv.finished.length > 0 ? (
+            <div className="flex flex-wrap justify-center gap-[0.4em]">
+              {sv.finished.map((s, i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    "rounded-md bg-muted px-[0.5em] py-[0.15em] font-tabular text-muted-foreground",
+                    board ? BOARD.sets : "text-xs",
+                  )}
+                >
+                  {s[0]}-{s[1]}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
-        <div className="min-w-0 text-center sm:text-left">
+        {board ? (
+          <BoardSide side={m.away} />
+        ) : (
           <TeamName
             side={m.away}
-            crestSize={board ? "xl" : "lg"}
-            className={cn(
-              "mx-auto justify-center text-sm font-medium sm:mx-0 sm:mr-auto sm:justify-start sm:text-base",
-              board && "text-xl sm:text-3xl",
-            )}
+            crestSize="lg"
+            wrap
+            className="mx-auto text-sm font-medium sm:mx-0 sm:mr-auto sm:text-base"
           />
-        </div>
+        )}
       </div>
 
-      {sv && sv.finished.length > 0 ? (
-        <div className="flex flex-wrap justify-center gap-1.5">
-          {sv.finished.map((s, i) => (
-            <span
-              key={i}
-              className={cn(
-                "rounded-md bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground",
-                board && "px-3 py-1 text-base sm:text-xl",
-              )}
-            >
-              {s[0]}-{s[1]}
+      {meta.length ? (
+        <p
+          data-testid="spotlight-meta"
+          className={cn(
+            "flex flex-wrap items-center justify-center gap-x-[0.6em] gap-y-1 text-muted-foreground",
+            board ? BOARD.meta : "text-xs",
+          )}
+        >
+          {meta.map((bit, i) => (
+            <span key={bit} className={cn(i === 1 && "font-tabular")}>
+              {bit}
             </span>
           ))}
-        </div>
+        </p>
       ) : null}
-
-      <div
-        className={cn(
-          "flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground",
-          board && "text-sm sm:text-lg",
-        )}
-      >
-        {m.scheduled_at ? (
-          <span className="inline-flex items-center gap-1.5">
-            <Clock aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-            <span className="font-tabular">
-              {fmtKickoff(m.scheduled_at, timeZone)}
-            </span>
-          </span>
-        ) : null}
-        {m.venue ? (
-          <span className="inline-flex items-center gap-1.5">
-            <MapPin aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-            {m.venue}
-          </span>
-        ) : null}
-        {m.group_label ? <span>{m.group_label}</span> : null}
-      </div>
 
       {kind === "live" ? (
         <div className="flex justify-center">
@@ -283,19 +351,57 @@ export function CompetitionSpotlight({
           />
         </div>
       ) : null}
+    </>
+  );
 
+  if (!board) {
+    return (
+      <section
+        ref={ref}
+        data-testid="competition-spotlight"
+        data-kind={kind}
+        data-board="off"
+        className="flex flex-col gap-3 border-b border-border bg-card p-3 sm:p-4"
+      >
+        <div className="flex items-center gap-2">{heading}</div>
+        {body}
+      </section>
+    );
+  }
+
+  return (
+    <section
+      ref={ref}
+      data-testid="competition-spotlight"
+      data-kind={kind}
+      data-board="on"
+      className="fixed inset-0 z-50 flex flex-col bg-card"
+    >
+      {/* Pinned to the very top, where the owner asked for it: on a screen
+          across a hall the state of play is the first thing read, and the way
+          out must not be hunted for. */}
+      <div className="flex shrink-0 items-center gap-[clamp(0.5rem,1.2vw,1.5rem)] border-b border-border px-[clamp(0.75rem,2.5vw,3rem)] py-[clamp(0.5rem,1.2vw,1.25rem)]">
+        {heading}
+      </div>
+      {/* The match takes every pixel the two bars leave. */}
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-[clamp(0.75rem,2.5vw,3rem)] overflow-y-auto px-[clamp(0.75rem,2.5vw,3rem)] py-[clamp(0.75rem,2vw,2rem)]">
+        {body}
+      </div>
       {/* Only on the board: a screen cannot be scrolled by the people reading
           it, so what follows is named for them. */}
       {next ? (
         <p
           data-testid="spotlight-next"
-          className="mx-auto flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground sm:text-lg"
+          className={cn(
+            "flex shrink-0 flex-wrap items-center justify-center gap-x-[0.6em] gap-y-1 border-t border-border px-[clamp(0.75rem,2.5vw,3rem)] py-[clamp(0.5rem,1.2vw,1.25rem)] text-muted-foreground",
+            BOARD.meta,
+          )}
         >
-          <span className="font-medium text-foreground">{t("Up next")}</span>
+          <span className="font-semibold text-foreground">{t("Up next")}</span>
           <span className="font-tabular">
             {fmtKickoff(next.scheduled_at, timeZone)}
           </span>
-          <span>
+          <span className="[overflow-wrap:anywhere]">
             {next.home?.name ?? t("TBD")} {t("vs")} {next.away?.name ?? t("TBD")}
           </span>
         </p>
