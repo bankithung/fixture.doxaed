@@ -382,6 +382,31 @@ describe("ControlRoomPage", () => {
     expect(within(board).getByTestId("actions-m1")).toBeInTheDocument();
   });
 
+  it("floats the row actions menu clear of the board it opens from", async () => {
+    // Owner 2026-08-26: "the drop down is appearing inside the section, need
+    // to give more elevation". The menu was `absolute` inside the row, and the
+    // board's wrapper is `overflow-x-auto` — which clips on BOTH axes once one
+    // axis is not visible, so the menu was cut off by its own table instead of
+    // floating over it. It is portaled now, and this asserts the escape rather
+    // than the shadow: a z-index alone would not have fixed a clip.
+    mount();
+    await userEvent.click(await screen.findByTestId("board-tab-live"));
+    await userEvent.click(screen.getByTestId("actions-m1"));
+
+    const menu = await screen.findByTestId("actions-menu-m1");
+    expect(menu).toBeInTheDocument();
+    // Outside every scrolling ancestor: a direct child of <body>, not of the
+    // board.
+    expect(menu.parentElement).toBe(document.body);
+    expect(screen.getByTestId("day-board").contains(menu)).toBe(false);
+    // And it is positioned against the viewport, not the row.
+    expect(menu.style.position).toBe("fixed");
+
+    // Escape closes it, like every other overlay in the app.
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByTestId("actions-menu-m1")).toBeNull();
+  });
+
   it("the Ongoing tab says so when nothing is in play", async () => {
     vi.mocked(tournamentsApi.controlRoom).mockResolvedValue({
       ...ROOM,

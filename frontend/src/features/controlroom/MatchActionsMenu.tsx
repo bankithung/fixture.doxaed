@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -48,6 +49,7 @@ import { MOVABLE_STATUSES, errorDetail } from "@/features/fixtures/repair";
 import { AssignDrawer } from "./AssignDrawer";
 import { newEventId } from "@/lib/eventId";
 import { invalidateTournament, qk } from "@/lib/queryKeys";
+import { flipPlacement } from "@/lib/popover";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -1007,6 +1009,16 @@ export function RowActions({
   const [dispute, setDispute] = useState(false);
   const [repair, setRepair] = useState<"move" | "delay" | "swap" | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // Where the portaled menu sits. Anchored to the trigger in VIEWPORT
+  // coordinates, because it no longer lives inside the row.
+  const [pos, setPos] = useState<{
+    top?: number;
+    bottom?: number;
+    right: number;
+    maxHeight: number;
+  } | null>(null);
 
   const locked = Boolean(match.locked_at);
   const lockToggle = useMutation({
@@ -1047,13 +1059,50 @@ export function RowActions({
       }),
   });
 
+  /** Place the menu against the trigger, then open it. Right-aligned like the
+   * old absolute menu was, and flipped above the row when the viewport has
+   * more room there — the last rows of a long board are the common case. */
+  const openMenu = (): void => {
+    const r = triggerRef.current?.getBoundingClientRect();
+    if (!r) return;
+    // ~34px per item; the fullest menu this component builds is 11 items.
+    const { top, bottom, maxHeight } = flipPlacement(r, 11 * 34 + 10, 4);
+    setPos({
+      top,
+      bottom,
+      maxHeight,
+      right: Math.max(8, window.innerWidth - r.right),
+    });
+    setOpen(true);
+  };
+
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent): void => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      // The menu is portaled to <body>, so it is NOT inside `ref` any more:
+      // testing the wrapper alone would close the menu on its own items.
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
     };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    // Fixed position + a board that scrolls in both directions: close rather
+    // than let the menu drift away from the row it belongs to.
+    const close = (): void => setOpen(false);
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
   }, [open]);
 
   const showCall = perms.canSchedule && match.status === "scheduled";
@@ -1144,18 +1193,29 @@ export function RowActions({
         aria-expanded={open}
         aria-label={t("Match actions")}
         data-testid={tid("actions")}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => (open ? setOpen(false) : openMenu())}
+        ref={triggerRef}
         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <MoreVertical aria-hidden="true" className="h-4 w-4" />
       </button>
 
-      {open ? (
-        <div
-          role="menu"
-          aria-label={t("Match actions")}
-          className="absolute right-0 top-full z-40 mt-1 w-52 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
-        >
+      {open && pos
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              aria-label={t("Match actions")}
+              data-testid={tid("actions-menu")}
+              style={{
+                position: "fixed",
+                top: pos.top,
+                bottom: pos.bottom,
+                right: pos.right,
+                maxHeight: pos.maxHeight,
+              }}
+              className="z-[60] w-52 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-xl animate-fade-in"
+            >
           {showConsole && verb !== "console" ? (
             <Link
               to={routes.matchConsole(tournamentId, match.id)}
@@ -1332,8 +1392,10 @@ export function RowActions({
               </button>
             </>
           ) : null}
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
 
       {repair === "move" ? (
         <MoveMatchDialog
