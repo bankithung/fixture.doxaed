@@ -275,3 +275,53 @@ def test_confirmed_team_sheet_is_public_before_kickoff_draft_is_not():
     assert body["home"]["confirmed"] is True
     # The unconfirmed away draft is still private.
     assert "away" not in body
+
+
+@pytest.mark.django_db
+def test_snapshot_names_the_result_an_empty_side_waits_on():
+    """A placeholder used to reach the console as "To be decided" with "fills
+    from an earlier result" underneath: two ways of saying nothing. The typed
+    pointer (invariant #9) knows the answer, and the referenced match is named
+    by the same ``match_no`` the console prints for the match in hand."""
+    admin = _verified()
+    t = create_tournament(user=admin, name="Cup")
+    a, b = register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": "A", "players": []}, {"name": "B", "players": []}],
+    )
+    semi = Match.objects.create(
+        organization=t.organization, tournament=t, home_team=a, away_team=b,
+        stage="knockout", round_no=1, match_no=82,
+    )
+    final = Match.objects.create(
+        organization=t.organization, tournament=t,
+        stage="knockout", round_no=2, match_no=90,
+        home_source={"type": "winner_of", "match_id": str(semi.id)},
+        away_source={"type": "group_position", "group_label": "Group A", "position": 2},
+    )
+
+    body = APIClient().get(f"/api/live/match/{final.id}/").json()["match"]
+    assert body["home_source_label"] == "Winner of match 82"
+    assert body["away_source_label"] == "Group A, place 2"
+
+    # A side that IS filled has nothing to wait on, so it says nothing.
+    body = APIClient().get(f"/api/live/match/{semi.id}/").json()["match"]
+    assert body["home_source_label"] == ""
+    assert body["away_source_label"] == ""
+
+
+@pytest.mark.django_db
+def test_snapshot_source_label_is_empty_when_the_pointer_names_nothing():
+    """A `tbd` pointer, or one referencing a match that no longer exists, has
+    no answer to give — the console falls back to the bare phrase rather than
+    printing a half-sentence."""
+    admin = _verified()
+    t = create_tournament(user=admin, name="Cup")
+    m = Match.objects.create(
+        organization=t.organization, tournament=t,
+        home_source={"type": "tbd"},
+        away_source={"type": "winner_of", "match_id": "019e0000-0000-0000-0000-0000000000ff"},
+    )
+    body = APIClient().get(f"/api/live/match/{m.id}/").json()["match"]
+    assert body["home_source_label"] == ""
+    assert body["away_source_label"] == ""

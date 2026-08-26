@@ -335,7 +335,8 @@ describe("MatchConsolePage", () => {
   it("refuses to start a match whose sides are still to be decided", async () => {
     // Owner 2026-08-26: "if it is tbd then the start button should not work".
     // The slot fills from an earlier result, and that fill writes onto this
-    // very row — starting first would swap the teams under a running clock.
+    // very row, so a placeholder that went live would have its teams swapped
+    // under a running clock.
     vi.mocked(liveApi.snapshot).mockResolvedValue(
       snap("scheduled", { home_team: null, away_team: null } as never),
     );
@@ -343,12 +344,10 @@ describe("MatchConsolePage", () => {
 
     const start = await screen.findByTestId("start-match");
     expect(start).toBeDisabled();
-    // And the bar says why, rather than leaving a dead button unexplained.
+    // The bar explains the dead button, and says it ONCE: which result each
+    // side is waiting for belongs on that side, not repeated down here.
     expect(screen.getByTestId("gate-readiness")).toHaveTextContent(
-      "Neither side is decided yet.",
-    );
-    expect(screen.getByTestId("gate-readiness")).toHaveTextContent(
-      "This match cannot start yet.",
+      "Start opens once both sides are decided.",
     );
   });
 
@@ -359,9 +358,72 @@ describe("MatchConsolePage", () => {
     renderConsole();
 
     expect(await screen.findByTestId("start-match")).toBeDisabled();
-    expect(screen.getByTestId("gate-readiness")).toHaveTextContent(
-      "One side is still to be decided.",
+  });
+
+  it("keeps the start bar stuck to the viewport, not clipped by the sheet", async () => {
+    // The bug behind "the start button in mobile view i have to scroll a lot"
+    // (owner 2026-08-26): the bar was already `sticky bottom-0`, but the
+    // section around it carried `overflow-hidden`, and an overflow-clipped
+    // ancestor cancels sticky outright — the nearest scroll container becomes
+    // a box that never scrolls. Nothing about the bar looked wrong, so this
+    // asserts the ancestor, which is where the fault actually was.
+    vi.mocked(liveApi.snapshot).mockResolvedValue(snap("scheduled"));
+    renderConsole();
+
+    const gate = await screen.findByTestId("pre-match-gate");
+    expect(gate.className).not.toMatch(/overflow-hidden/);
+    const bar = screen.getByTestId("gate-readiness").parentElement!;
+    expect(bar.className).toMatch(/sticky/);
+    expect(bar.className).toMatch(/bottom-0/);
+    // And no ancestor between the two may clip either.
+    for (let el = bar.parentElement; el && el !== document.body; el = el.parentElement) {
+      expect(el.className).not.toMatch(/overflow-hidden/);
+    }
+  });
+
+  it("names the result an empty side is waiting on", async () => {
+    // "To be decided" is true and useless. The pointer knows the answer, and
+    // a match number is something an official can find on the same printed
+    // order-of-play they found this match on.
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("scheduled", {
+        home_team: null,
+        away_team: null,
+        home_source_label: "Winner of match 82",
+        away_source_label: "Winner of match 83",
+      } as never),
     );
+    renderConsole();
+
+    const away = await screen.findByTestId("gate-sheet-away");
+    expect(
+      within(screen.getByTestId("gate-sheet-home")).getByRole("heading", {
+        name: "Winner of match 82",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(away).getByRole("heading", { name: "Winner of match 83" }),
+    ).toBeInTheDocument();
+    // Said once: no "fills from an earlier result" underneath a line that
+    // already says exactly what it fills from.
+    expect(
+      within(away).queryByText("Fills from an earlier result."),
+    ).toBeNull();
+  });
+
+  it("falls back to the bare phrase only when the pointer names nothing", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("scheduled", { away_team: null } as never),
+    );
+    renderConsole();
+
+    const away = await screen.findByTestId("gate-sheet-away");
+    expect(
+      within(away).getByRole("heading", { name: "To be decided" }),
+    ).toBeInTheDocument();
+    expect(
+      within(away).getByText("Fills from an earlier result."),
+    ).toBeInTheDocument();
   });
 
   it("numbers a squad that has no shirt numbers rather than drawing empty boxes", async () => {

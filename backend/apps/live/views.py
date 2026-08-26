@@ -4,6 +4,7 @@ public-safe display names are preferred, and voided events are dropped."""
 from __future__ import annotations
 
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny
@@ -178,6 +179,49 @@ def _h2h(m) -> list[dict]:
     ]
 
 
+def _source_label(src: dict | None, tournament_id) -> str:
+    """What an empty side is WAITING ON, in the order-of-play's own words.
+
+    A placeholder used to read "To be decided" with "Fills from an earlier
+    result" underneath — two ways of saying nothing. The pointer itself
+    (invariant #9) knows the answer: this slot is the winner of match 82, or
+    the runner-up of Group A. An official standing at the table can act on
+    that; "to be decided" is only true and useless.
+
+    The referenced match is named by its own ``match_no``, the same number
+    this screen prints for the match in hand, so the two can be matched by eye
+    on one printed sheet.
+    """
+    if not isinstance(src, dict):
+        return ""
+    kind = src.get("type")
+    if kind == "group_position":
+        group = (src.get("group_label") or "").strip()
+        pos = src.get("position")
+        if group and pos:
+            return _("%(group)s, place %(pos)s") % {"group": group, "pos": pos}
+        return ""
+    if kind not in ("winner_of", "loser_of"):
+        return ""
+    ref = src.get("match_id") or src.get("ref")
+    if not ref:
+        return ""
+    no = (
+        Match.objects.filter(
+            tournament_id=tournament_id, id=ref, deleted_at__isnull=True,
+        )
+        .values_list("match_no", flat=True)
+        .first()
+    )
+    if not no:
+        return ""
+    return (
+        _("Loser of match %(no)s") % {"no": no}
+        if kind == "loser_of"
+        else _("Winner of match %(no)s") % {"no": no}
+    )
+
+
 class LiveMatchSnapshotView(GenericAPIView):
     permission_classes = [AllowAny]
 
@@ -274,6 +318,17 @@ class LiveMatchSnapshotView(GenericAPIView):
                     "stage": m.stage,
                     "round_no": m.round_no,
                     "match_no": m.match_no,
+                    # What an empty side is waiting on, so a placeholder names
+                    # the result that fills it instead of saying "to be
+                    # decided" twice over.
+                    "home_source_label": (
+                        _source_label(m.home_source, m.tournament_id)
+                        if m.home_team_id is None else ""
+                    ),
+                    "away_source_label": (
+                        _source_label(m.away_source, m.tournament_id)
+                        if m.away_team_id is None else ""
+                    ),
                     # P1.d: the sport's console metadata — the client picks
                     # its console module (and terminology) from this, never
                     # from hardcoded sport checks.

@@ -3,7 +3,7 @@ import {
   CheckCircle2,
   CircleAlert,
   Clock,
-  Layers,
+  Hourglass,
   MapPin,
   Play,
   ShieldCheck,
@@ -40,35 +40,47 @@ import { competitionLabel } from "./console/shared";
  * **One thing does block it: a side that is still to be decided** (owner
  * 2026-08-26: "if it is tbd then the start button should not work"). A
  * bracket slot fills from an earlier result (invariant #9) and until it does
- * the side is nobody at all: nothing to score for, nothing to check on court,
- * and the public feed would carry "To be decided 0 - 0 To be decided". Nobody
- * can vouch for a team that does not exist yet, so this is the single
+ * the side is nobody at all: nothing to score for, nothing to check on court.
+ * Nobody can vouch for a team that does not exist yet, so this is the single
  * precondition, and `transition_match` enforces the same rule server-side.
  *
- * **The layout is a match sheet, in the order it is read** (owner 2026-08-19,
- * "redesign this page properly"). Four decisions carry it:
+ * **The 2026-08-26 rebuild** (owner: "the start button in mobile view i have
+ * to scroll a lot", "the current looks like an AI slop"). Four things were
+ * wrong, and each has a rule now:
  *
- * 1. *Nothing is said twice.* A knockout's `group_label` IS its competition
- *    label (`generate.py` names every bracket match after the category), so
- *    the old fixed four-cell strip printed "Table Tennis · Open Category ·
- *    Boys · Doubles" underneath a heading that already said it. Every cell
- *    here drops out when it is empty or when it merely repeats the heading.
- * 2. *The two squads are one opposition, not two lists.* They sit either side
- *    of a `vs` rail and are labelled Team 1 and Team 2, so an official reading
- *    the sheet knows which entry is which without reading the names (owner
- *    2026-08-19: "instead of home and away use team 1 team 2" — a school
- *    hosting on its own tables has no away side, and a table-tennis draw has
- *    no home end to speak of). `side` stays home/away underneath, because
- *    that is what the draw, the scoreboard and every score payload call it.
- *    The rail is a real grid column, so it becomes a full-width divider when
- *    the columns stack on a phone.
- * 3. *A number box means a shirt number.* Table tennis and sepak rosters carry
- *    none, and the old sheet drew an empty grey square beside every player. A
- *    squad with no numbers gets a plain ordinal instead.
- * 4. *Readiness is readable before the press, not only inside the confirm.*
- *    The same warnings the dialog lists are counted in the action bar, and
- *    each squad states how many of its players are named against the
- *    category's on-court cap.
+ * 1. *The action bar was `sticky` inside an `overflow-hidden` section*, which
+ *    silently cancels sticky — the nearest scroll container becomes a clipped
+ *    box that never scrolls. So Start really did sit at the bottom of a long
+ *    page on a phone. The section does not clip any more; **nothing on this
+ *    screen may reintroduce `overflow-hidden` on an ancestor of the bar.**
+ * 2. *Nothing is said twice.* The old sheet said "to be decided" as a name,
+ *    again as "Fills from an earlier result", and a third time in the
+ *    readiness line. A fact appears once, in the one place it belongs.
+ * 3. *An empty side names what it is WAITING ON* — "Winner of match 82",
+ *    "Group A, place 2" (`home_source_label` off the pointer, invariant #9).
+ *    "To be decided" is true and useless; the match number is something an
+ *    official can look up on the same order-of-play they found this match on.
+ *    It is the heading of that side, so no explainer line is needed under it,
+ *    and there is no fake "TB" crest for a team that does not exist.
+ * 4. *Facts read as facts, not as form fields.* Time and court sit on one
+ *    line instead of in a 2x2 grid of boxed cells with uppercase micro-labels
+ *    over each; the crew is a row of chips instead of a stacked list. That is
+ *    what takes the screen from "scroll a lot" to one phone screen.
+ *
+ * **The layout is a match sheet, in the order it is read** (owner 2026-08-19,
+ * "redesign this page properly"):
+ *
+ * - *The two squads are one opposition, not two lists.* They are labelled
+ *   Team 1 and Team 2 (owner 2026-08-19: "instead of home and away use team 1
+ *   team 2" — a school hosting on its own tables has no away side, and a
+ *   table-tennis draw has no home end to speak of). `side` stays home/away
+ *   underneath, because that is what the draw, the scoreboard and every score
+ *   payload call it.
+ * - *A number box means a shirt number.* Table tennis and sepak rosters carry
+ *   none, and a squad with no numbers gets a plain ordinal instead of an empty
+ *   grey square beside every player.
+ * - *Readiness is readable before the press, not only inside the confirm.*
+ *   The same warnings the dialog lists are counted in the action bar.
  */
 
 type Side = "home" | "away";
@@ -104,26 +116,21 @@ function personInitials(name: string): string {
     .join("");
 }
 
-function InfoCell({
+/** One fact, stated the way a person says it. The old sheet wrapped each of
+ * these in a bordered cell under an uppercase label; four of them filled a
+ * phone screen to say "12:40" and "Audi · T1". */
+function Fact({
   icon: Icon,
-  label,
-  value,
+  children,
 }: {
   icon: typeof MapPin;
-  label: string;
-  value: string;
-}): React.ReactElement | null {
-  if (!value) return null;
+  children: React.ReactNode;
+}): React.ReactElement {
   return (
-    <div className="flex min-w-0 items-start gap-2">
-      <Icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <dt className="text-[0.625rem] font-semibold uppercase leading-none tracking-[0.16em] text-muted-foreground">
-          {label}
-        </dt>
-        <dd className="truncate text-sm font-medium">{value}</dd>
-      </div>
-    </div>
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <span className="truncate">{children}</span>
+    </span>
   );
 }
 
@@ -141,7 +148,7 @@ function RosterCount({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 text-xs font-medium",
+        "inline-flex shrink-0 items-center gap-1 text-xs font-medium",
         complete ? "text-success" : "text-warning",
       )}
     >
@@ -155,69 +162,95 @@ function RosterCount({
   );
 }
 
-function TeamSheet({
+function SquadPanel({
   team,
   side,
   tone,
-  fallback,
   perSide,
+  waitingOn,
+  className,
 }: {
   team: Team;
   side: Side;
   tone: "primary" | "info";
-  fallback: string;
   perSide: number | null;
+  /** What fills this slot, when nothing has yet. */
+  waitingOn: string;
+  className?: string;
 }): React.ReactElement {
   const players = team?.players ?? [];
-  const name = team?.name ?? fallback;
   // A number box only appears where there are numbers to put in it.
   const numbered = players.some((p) => p.jersey_no != null);
+  // The heading IS the answer: a team once there is one, otherwise the result
+  // this slot is waiting for. Only a pointer that names nothing falls back to
+  // the bare phrase, and only that case earns a line of explanation.
+  const heading = team?.name ?? waitingOn ?? "";
+
   return (
     <div
       data-testid={`gate-sheet-${side}`}
-      className="relative flex min-w-0 flex-col gap-3 p-3 pl-4 sm:p-4 sm:pl-5"
+      className={cn("relative flex min-w-0 flex-col gap-3 p-3 pl-4 sm:p-4 sm:pl-5", className)}
     >
       <span
         aria-hidden="true"
         className={cn(
           "absolute inset-y-0 left-0 w-1",
-          tone === "primary" ? "bg-primary" : "bg-info",
+          team ? (tone === "primary" ? "bg-primary" : "bg-info") : "bg-border",
         )}
       />
-      {/* Centred rather than baseline-aligned, because the badge is the
-          tallest thing on this row. It is the largest crest in the app: this
-          screen exists so an official can match the sheet to the people in
-          front of them, and a badge is what a school is recognised by. */}
       <div className="flex items-center gap-3">
-        <TeamCrest src={team?.crest} name={name} size="xl" />
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
+        {team ? (
+          // The largest crest in the app: this screen exists so an official
+          // can match the sheet to the people in front of them, and a badge is
+          // what a school is recognised by.
+          <TeamCrest src={team.crest} name={team.name} size="xl" />
+        ) : (
+          <span
+            aria-hidden="true"
+            className="grid h-14 w-14 shrink-0 place-items-center rounded-xl border border-dashed border-border text-muted-foreground"
+          >
+            <Hourglass className="h-5 w-5" />
+          </span>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span
             className={cn(
-              "text-[0.625rem] font-semibold uppercase leading-none tracking-[0.16em]",
-              tone === "primary" ? "text-primary" : "text-info",
+              "text-xs font-medium",
+              team
+                ? tone === "primary"
+                  ? "text-primary"
+                  : "text-info"
+                : "text-muted-foreground",
             )}
           >
             {side === "home" ? t("Team 1") : t("Team 2")}
           </span>
-          <h3 className="min-w-0 text-base font-semibold leading-tight sm:text-lg">
-            {name}
-          </h3>
-          {team ? <RosterCount named={players.length} perSide={perSide} /> : null}
+          <h2
+            className={cn(
+              "truncate text-base font-semibold leading-tight",
+              team ? "" : "text-muted-foreground",
+            )}
+          >
+            {heading || t("To be decided")}
+          </h2>
+          {team ? (
+            <RosterCount named={players.length} perSide={perSide} />
+          ) : null}
         </div>
       </div>
-      {players.length ? (
+      {team && players.length ? (
         <ol className="flex flex-col">
           {players.map((p, i) => (
             <li
               key={p.id}
-              className="flex min-h-11 items-center gap-3 border-b border-border/60 py-1 last:border-b-0"
+              className="flex min-h-9 items-center gap-3 border-b border-border/60 py-1 last:border-b-0"
             >
               <span
                 aria-hidden="true"
                 className={cn(
                   "shrink-0 font-tabular",
                   numbered
-                    ? "grid h-8 w-8 place-items-center rounded-md bg-muted text-xs font-medium text-muted-foreground"
+                    ? "grid h-7 w-7 place-items-center rounded-md bg-muted text-xs font-medium text-muted-foreground"
                     : "w-5 text-right text-xs text-muted-foreground/70",
                 )}
               >
@@ -234,17 +267,21 @@ function TeamSheet({
             </li>
           ))}
         </ol>
-      ) : (
+      ) : null}
+      {team && !players.length ? (
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
           <CircleAlert
             aria-hidden="true"
             className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning"
           />
-          {team
-            ? t("No players listed for this team.")
-            : t("Fills from an earlier result.")}
+          {t("No players listed for this team.")}
         </p>
-      )}
+      ) : null}
+      {!team && !waitingOn ? (
+        <p className="text-xs text-muted-foreground">
+          {t("Fills from an earlier result.")}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -314,15 +351,14 @@ export function PreMatchGate({
     norm(group) === norm(`${sport}${category}`);
   const groupCell = group && !echoesHeading ? group : "";
 
+  // The squad size is a fact worth stating for a team sport and noise for a
+  // singles draw, where the heading already ends in the word "Singles".
+  const formatCell = perSide && perSide > 2 ? `${perSide} ${t("a side")}` : "";
+
   // The one condition that stops the match, rather than merely being worth a
-  // look. Both sides unresolved and one side unresolved read differently on
-  // the day, so they are said differently.
+  // look. The disabled button needs a reason beside it; the sides themselves
+  // say WHICH result they are waiting on, so this does not repeat them.
   const undecided = !match.home_team || !match.away_team;
-  const blocker = !undecided
-    ? ""
-    : !match.home_team && !match.away_team
-      ? t("Neither side is decided yet.")
-      : t("One side is still to be decided.");
 
   // Said once in the dialog and counted once in the action bar, so the sheet
   // itself stays a sheet. These do NOT stop the match: they are what the
@@ -340,14 +376,14 @@ export function PreMatchGate({
   return (
     <section
       data-testid="pre-match-gate"
-      className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+      className="flex flex-col rounded-xl border border-border bg-card shadow-sm"
     >
-      {/* Masthead: what is being played, where it sits in the draw, and where
-          it is played. */}
-      <div className="flex flex-col gap-3 border-b border-border p-3 sm:p-4">
+      {/* What is being played, where it sits in the draw, and the two facts an
+          official needs to know they are at the right table. */}
+      <header className="flex flex-col gap-3 border-b border-border p-3 sm:p-4">
         <div className="flex flex-wrap items-center gap-2">
           {back}
-          <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-[0.625rem] font-semibold uppercase leading-none tracking-[0.16em] text-muted-foreground">
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
             <span
               aria-hidden="true"
               className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60"
@@ -358,67 +394,65 @@ export function PreMatchGate({
         <div className="flex flex-col gap-1">
           <h1
             data-testid="match-context"
-            className="text-base font-semibold leading-tight tracking-tight sm:text-lg"
+            className="text-lg font-semibold leading-tight tracking-tight sm:text-xl"
           >
             {heading}
           </h1>
-          {drawLine ? (
-            <p
-              data-testid="gate-draw-line"
-              className="text-xs text-muted-foreground"
-            >
-              {drawLine}
+          {drawLine || groupCell ? (
+            <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+              {drawLine ? (
+                <span data-testid="gate-draw-line">{drawLine}</span>
+              ) : null}
+              {drawLine && groupCell ? (
+                <span aria-hidden="true" className="text-border">
+                  ·
+                </span>
+              ) : null}
+              {groupCell ? <span>{groupCell}</span> : null}
             </p>
           ) : null}
         </div>
-        {startTime || match.venue || groupCell || perSide ? (
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-border bg-muted/40 p-3 sm:grid-cols-4">
-            <InfoCell icon={Clock} label={t("Start")} value={startTime} />
-            <InfoCell icon={MapPin} label={t("Court")} value={match.venue ?? ""} />
-            <InfoCell
-              icon={Users}
-              label={t("Format")}
-              value={perSide ? `${perSide} ${t("a side")}` : ""}
-            />
-            <InfoCell icon={Layers} label={t("Group")} value={groupCell} />
-          </dl>
+        {startTime || match.venue || formatCell ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm font-medium">
+            {startTime ? (
+              <Fact icon={Clock}>
+                <span className="font-tabular">{startTime}</span>
+              </Fact>
+            ) : null}
+            {match.venue ? <Fact icon={MapPin}>{match.venue}</Fact> : null}
+            {formatCell ? <Fact icon={Users}>{formatCell}</Fact> : null}
+          </div>
         ) : null}
-      </div>
+      </header>
 
-      {/* Who is playing. The rail between them is a real grid column, so it
-          becomes a full-width divider once the sheets stack. */}
-      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-        <TeamSheet
+      {/* Who is playing. Two panels, side by side once there is room for them. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2">
+        <SquadPanel
           team={match.home_team}
           side="home"
           tone="primary"
-          fallback={homeName}
           perSide={perSide}
+          waitingOn={match.home_source_label ?? ""}
         />
-        <div className="flex items-center justify-center border-y border-border bg-muted/30 py-1.5 sm:border-x sm:border-y-0 sm:px-2 sm:py-0">
-          <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[0.625rem] font-semibold uppercase leading-none tracking-[0.16em] text-muted-foreground">
-            {t("vs")}
-          </span>
-        </div>
-        <TeamSheet
+        <SquadPanel
           team={match.away_team}
           side="away"
           tone="info"
-          fallback={awayName}
           perSide={perSide}
+          waitingOn={match.away_source_label ?? ""}
+          className="border-t border-border sm:border-l sm:border-t-0"
         />
       </div>
 
-      {/* Who is running it. */}
+      {/* Who is running it. A crew is two or three people, so they are chips on
+          one wrapping row rather than a list with a row each. */}
       <div className="flex flex-col gap-2 border-t border-border p-3 sm:p-4">
         <div className="flex items-center gap-2">
           <ShieldCheck
             aria-hidden="true"
-            className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+            className="h-4 w-4 shrink-0 text-muted-foreground"
           />
-          <span className="text-[0.625rem] font-semibold uppercase leading-none tracking-[0.16em] text-muted-foreground">
-            {t("Match officials")}
-          </span>
+          <span className="text-sm font-medium">{t("Officials")}</span>
           {officials.length ? (
             <span className="ml-auto font-tabular text-xs text-muted-foreground">
               {officials.length}
@@ -428,33 +462,27 @@ export function PreMatchGate({
         {officials.length === 0 ? (
           <p
             data-testid="gate-no-officials"
-            className="flex items-start gap-1.5 text-xs text-muted-foreground"
+            className="text-xs text-muted-foreground"
           >
-            <CircleAlert
-              aria-hidden="true"
-              className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning"
-            />
-            {t(
-              "Nobody is assigned yet. You can still start, but the result will have no named official.",
-            )}
+            {t("Nobody is assigned. The result will have no named official.")}
           </p>
         ) : (
-          <ul data-testid="gate-officials" className="flex flex-col">
+          <ul data-testid="gate-officials" className="flex flex-wrap gap-2">
             {officials.map((o) => (
               <li
                 key={`${o.id}-${o.role}`}
-                className="flex min-h-11 items-center gap-2.5 border-b border-border/60 last:border-b-0"
+                className="inline-flex min-w-0 items-center gap-2 rounded-full border border-border bg-muted/40 py-1 pl-1 pr-3"
               >
                 <span
                   aria-hidden="true"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-[0.6875rem] font-semibold text-muted-foreground"
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-[0.6875rem] font-semibold text-muted-foreground"
                 >
                   {personInitials(o.name)}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                <span className="min-w-0 truncate text-sm font-medium">
                   {o.name}
                 </span>
-                <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[0.6875rem] text-muted-foreground">
+                <span className="shrink-0 text-xs text-muted-foreground">
                   {t(officialRoleLabel(o.role))}
                 </span>
               </li>
@@ -464,9 +492,9 @@ export function PreMatchGate({
       </div>
 
       {/* The team sheets are editable from here, folded away so the screen
-          still reads as one thing (the chassis folds its recorder and event
-          log the same way). */}
-      {sheets ? (
+          still reads as one thing. There is nothing to edit while a side is a
+          pointer, so the fold does not appear at all. */}
+      {sheets && !undecided ? (
         <details className="border-t border-border">
           <summary className="cursor-pointer select-none px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground sm:px-4">
             {t("Edit team sheets")}
@@ -475,35 +503,39 @@ export function PreMatchGate({
         </details>
       ) : null}
 
-      {/* One action, and it is the only one on the page. What the confirm is
-          about to say is already counted here, so nobody presses blind. */}
-      <div className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-border bg-card/95 p-3 backdrop-blur supports-[backdrop-filter]:bg-card/80 sm:flex-row sm:items-center sm:p-4">
+      {/* One action, and it is the only one on the page. It rides the bottom of
+          the viewport the whole way down the sheet, so Start is never a scroll
+          away on a phone — which is exactly what `overflow-hidden` on this
+          section used to break. */}
+      <div className="sticky bottom-0 z-10 flex items-center gap-3 rounded-b-xl border-t border-border bg-card/95 p-3 backdrop-blur supports-[backdrop-filter]:bg-card/80 sm:p-4">
         <p
           data-testid="gate-readiness"
           className={cn(
-            "flex items-center gap-1.5 text-xs font-medium",
-            blocker || warnings.length ? "text-warning" : "text-success",
+            "flex min-w-0 flex-1 items-start gap-1.5 text-xs font-medium",
+            undecided || warnings.length ? "text-warning" : "text-success",
           )}
         >
-          {blocker || warnings.length ? (
-            <CircleAlert aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          {undecided || warnings.length ? (
+            <CircleAlert aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           ) : (
-            <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            <CheckCircle2 aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           )}
-          {blocker
-            ? `${blocker} ${t("This match cannot start yet.")}`
-            : warnings.length === 0
-              ? t("Everything is in place.")
-              : warnings.length === 1
-                ? t("1 thing to check before you start.")
-                : `${warnings.length} ${t("things to check before you start.")}`}
+          <span className="min-w-0">
+            {undecided
+              ? t("Start opens once both sides are decided.")
+              : warnings.length === 0
+                ? t("Everything is in place.")
+                : warnings.length === 1
+                  ? t("1 thing to check before you start.")
+                  : `${warnings.length} ${t("things to check before you start.")}`}
+          </span>
         </p>
         <Button
           size="lg"
           data-testid="start-match"
           disabled={pending || undecided}
           onClick={() => setConfirming(true)}
-          className="h-12 w-full text-base sm:ml-auto sm:w-auto sm:min-w-48"
+          className="h-11 shrink-0 px-6 text-sm sm:h-12 sm:min-w-44 sm:text-base"
         >
           <Play aria-hidden="true" className="mr-1.5 h-4 w-4" />
           {t("Start match")}

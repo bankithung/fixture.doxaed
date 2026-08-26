@@ -120,6 +120,11 @@ export interface LiveSnapshot {
     stage?: string;
     round_no?: number;
     match_no?: number;
+    /** What an empty side is waiting on, resolved from its typed pointer
+     * (invariant #9): "Winner of match 82", "Group A, place 2". Empty once the
+     * side is filled, or when the pointer names nothing. */
+    home_source_label?: string;
+    away_source_label?: string;
     /** Confirmed team sheets (only once live/final and a lineup was built). */
     lineups?: { home?: LiveLineupSide; away?: LiveLineupSide } | null;
   };
