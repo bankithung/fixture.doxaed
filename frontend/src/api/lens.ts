@@ -469,3 +469,94 @@ export const lensApi = {
       `/api/public/tournaments/${encodeURIComponent(slug)}/${encodeURIComponent(tid)}/album/${campaignId ? `${encodeURIComponent(campaignId)}/` : ""}`,
     ),
 };
+
+/* ------------------------------------------------------------- judging --- */
+
+export interface JudgeCriterion {
+  key: string;
+  label: string;
+  max: number;
+}
+
+/** One entry as a JUDGE sees it: no school, no photographer. */
+export interface JudgeEntry {
+  kind: "photo" | "story";
+  id: string;
+  category: string;
+  caption: string;
+  description?: string;
+  photos: { url: string; thumb_url: string }[];
+  score?: { marks: Record<string, number>; total: number; note: string } | null;
+}
+
+export interface JudgePanel {
+  judge: { name: string };
+  campaign: { title: string; tagline: string };
+  rubrics: {
+    photo: { criteria: JudgeCriterion[]; guide: string };
+    story: { criteria: JudgeCriterion[]; guide: string };
+  };
+  entries: JudgeEntry[];
+  totals: { entries: number; scored: number };
+}
+
+export interface JudgeRow {
+  id: string;
+  name: string;
+  email: string;
+  revoked: boolean;
+  last_seen_at: string | null;
+  scored: number;
+}
+
+export interface JudgingResultEntry extends JudgeEntry {
+  school?: string;
+  photographer?: string;
+  judges: number;
+  average: number | null;
+  rank: number | null;
+  sheets: {
+    judge: string;
+    total: number;
+    marks: Record<string, number>;
+    note: string;
+  }[];
+}
+
+export const judgingApi = {
+  /** The judge's own sheet, by link. No login. */
+  panel: (token: string) =>
+    api.get<JudgePanel>(`/api/lens/j/${encodeURIComponent(token)}/`),
+  score: (
+    token: string,
+    body: {
+      kind: "photo" | "story";
+      entry_id: string;
+      marks: Record<string, number>;
+      note?: string;
+    },
+  ) =>
+    api.post<{ total: number; marks: Record<string, number> }>(
+      `/api/lens/j/${encodeURIComponent(token)}/scores/`,
+      body,
+    ),
+  /** Manager: the panel roster. */
+  judges: (campaignId: string) =>
+    api.get<{ judges: JudgeRow[]; entries: number }>(
+      `/api/lens/campaigns/${campaignId}/judges/`,
+    ),
+  appoint: (campaignId: string, body: { name: string; email?: string }) =>
+    api.post<{ id: string; name: string; url: string }>(
+      `/api/lens/campaigns/${campaignId}/judges/`,
+      body,
+    ),
+  revokeJudge: (campaignId: string, judgeId: string) =>
+    api.delete<{ revoked: boolean }>(
+      `/api/lens/campaigns/${campaignId}/judges/${judgeId}/`,
+    ),
+  /** Manager: the verdict, identities shown. */
+  results: (campaignId: string) =>
+    api.get<{ categories: { category: string; is_story: boolean; entries: JudgingResultEntry[] }[] }>(
+      `/api/lens/campaigns/${campaignId}/judging/`,
+    ),
+};

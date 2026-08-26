@@ -96,6 +96,7 @@ const LiveViewerPage = lazy(() => import("@/features/live/LiveViewerPage").then(
 const PublicStandingsPage = lazy(() => import("@/features/live/PublicStandingsPage").then((m) => ({ default: m.PublicStandingsPage })));
 const PublicEntriesPage = lazy(() => import("@/features/fixtures/PublicEntriesPage").then((m) => ({ default: m.PublicEntriesPage })));
 const PublicResultsPage = lazy(() => import("@/features/results/PublicResultsPage").then((m) => ({ default: m.PublicResultsPage })));
+const JudgePanelPage = lazy(() => import("@/features/lens/judging/JudgePanelPage").then((m) => ({ default: m.JudgePanelPage })));
 const PublicVideosPage = lazy(() => import("@/features/videos/PublicVideosPage").then((m) => ({ default: m.PublicVideosPage })));
 const VideoAlbumsPage = lazy(() => import("@/features/videos/VideoAlbumsPage").then((m) => ({ default: m.VideoAlbumsPage })));
 const PublicBracketRedirect = lazy(() => import("@/features/live/PublicBracketRedirect").then((m) => ({ default: m.PublicBracketRedirect })));
@@ -235,6 +236,8 @@ export default function App(): React.ReactElement {
               <Route path="/t/:slug/:id/bracket" element={<PublicBracketRedirect />} />
               <Route path="/t/:slug/:id/team/:teamId" element={<PublicTeamPage />} />
               <Route path="/t/:slug/:id/school/:instId" element={<PublicSchoolPage />} />
+              {/* The judging panel: one signed link per judge, no login. */}
+              <Route path="/lens/judge/:token" element={<JudgePanelPage />} />
               {/* Guest Lens: QR-card upload page + the public shared album. */}
               {/* ONE card for the event: the scan lands on the join page,
                   which hands over to the upload page once a school has typed

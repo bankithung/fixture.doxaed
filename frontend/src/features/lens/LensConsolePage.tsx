@@ -14,6 +14,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
+import { JudgingPanel } from "./judging/JudgingPanel";
 import {
   lensApi,
   type LensCampaign,
@@ -44,7 +45,7 @@ import { ApiError } from "@/types/api";
 import { AwardRankBoard } from "./AwardRankBoard";
 import { ShareCardStrip } from "./PassPrintSheet";
 
-type TabKey = "campaign" | "cards" | "moderate" | "awards";
+type TabKey = "campaign" | "cards" | "moderate" | "judging" | "awards";
 
 /** A device-cached issued code plus the rotation stamp that keeps it honest:
  * when the pass row's code_set_at moves, this copy stops being shown. */
@@ -874,6 +875,7 @@ export function LensConsolePage(): React.ReactElement {
   const TABS: { key: TabKey; label: string }[] = [
     { key: "moderate", label: t("Moderate") },
     { key: "cards", label: t("Cards") },
+    { key: "judging", label: t("Judging") },
     { key: "awards", label: t("Awards") },
     { key: "campaign", label: t("Settings") },
   ];
@@ -1454,6 +1456,12 @@ export function LensConsolePage(): React.ReactElement {
             </div>
           )}
           </>
+        ) : null}
+
+        {tab === "judging" && campaignId ? (
+          <div className="p-3">
+            <JudgingPanel campaignId={campaignId} />
+          </div>
         ) : null}
 
         {tab === "awards" ? (
