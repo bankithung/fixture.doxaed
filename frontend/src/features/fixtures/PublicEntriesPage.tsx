@@ -280,7 +280,7 @@ export function PublicEntriesPage(): React.ReactElement {
   );
 
   const stick =
-    "w-40 min-w-40 max-w-40 sm:w-64 sm:min-w-64 sm:max-w-64 lg:w-80 lg:min-w-80 lg:max-w-80";
+    "min-w-[9rem] max-w-[11rem] sm:w-64 sm:min-w-64 sm:max-w-64 lg:w-80 lg:min-w-80 lg:max-w-80";
 
   return (
     <div className="flex min-h-screen flex-col print-doc">
@@ -422,7 +422,7 @@ export function PublicEntriesPage(): React.ReactElement {
                 <div className="min-w-0 -mx-3 overflow-x-auto sm:mx-0">
                   <table
                     data-testid="entries-matrix"
-                    className="w-full min-w-[46rem] border-separate border-spacing-0 text-[clamp(0.7rem,0.62rem+0.28vw,0.95rem)]"
+                    className="w-full min-w-[38rem] sm:min-w-[46rem] border-separate border-spacing-0 text-[clamp(0.7rem,0.62rem+0.28vw,0.95rem)]"
                   >
                     <caption className="sr-only">
                       {t(
@@ -435,7 +435,7 @@ export function PublicEntriesPage(): React.ReactElement {
                           rowSpan={2}
                           scope="col"
                           className={cn(
-                            "sticky left-0 z-10 border-b border-r border-border bg-card px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+                            "sm:sticky sm:left-0 sm:z-10 border-b border-r border-border bg-card px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground",
                             stick,
                           )}
                         >
@@ -495,7 +495,7 @@ export function PublicEntriesPage(): React.ReactElement {
                             <th
                               scope="row"
                               className={cn(
-                                "sticky left-0 z-[5] border-b border-r border-border px-3 py-2 text-left font-normal transition-colors group-hover:bg-accent",
+                                "sm:sticky sm:left-0 sm:z-[5] border-b border-r border-border px-3 py-2 text-left font-normal transition-colors group-hover:bg-accent",
                                 stripe,
                                 stick,
                               )}
@@ -549,7 +549,7 @@ export function PublicEntriesPage(): React.ReactElement {
                         <th
                           scope="row"
                           className={cn(
-                            "sticky left-0 z-[5] border-r border-border bg-card px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+                            "sm:sticky sm:left-0 sm:z-[5] border-r border-border bg-card px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground",
                             stick,
                           )}
                         >
