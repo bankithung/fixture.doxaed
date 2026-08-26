@@ -280,4 +280,53 @@ describe("PublicAlbumPage", () => {
       screen.getByText("Every approved photo is part of a story above."),
     ).toBeInTheDocument();
   });
+
+  it("opens a story frame in the viewer, with everything written about it", async () => {
+    // Tapping a story frame did nothing at all, and the caption, the story's
+    // title and its description were nowhere (owner 2026-08-26).
+    vi.mocked(lensApi.publicAlbum).mockResolvedValue({
+      ...ALBUM,
+      photos: [],
+      story_categories: ["Best Team Spirit"],
+      stories: [
+        {
+          id: "s1",
+          institution_id: "i1",
+          institution_name: "Grace School",
+          title: "Road to the final",
+          description: "From warm-up to podium",
+          category: "Best Team Spirit",
+          award_category: "",
+          photos: [
+            {
+              upload_ref: "f1", url: "/m/f1.jpg", thumb_url: "/m/f1_t.jpg",
+              caption: "The winning spike", position: 1,
+              award_category: "Best Team Spirit",
+              created_at: "2026-08-25T10:00:00Z",
+            },
+            {
+              upload_ref: "f2", url: "/m/f2.jpg", thumb_url: "/m/f2_t.jpg",
+              caption: "", position: 2, created_at: "2026-08-25T10:01:00Z",
+            },
+          ],
+        },
+      ],
+    } as unknown as PublicAlbum);
+    mount();
+
+    await userEvent.click(await screen.findByTestId("frame-f1"));
+    const box = await screen.findByTestId("album-lightbox");
+    expect(within(box).getByText("Road to the final")).toBeInTheDocument();
+    expect(within(box).getByText("From warm-up to podium")).toBeInTheDocument();
+    expect(within(box).getByText("The winning spike")).toBeInTheDocument();
+    expect(within(box).getByText("Grace School")).toBeInTheDocument();
+
+    // And it pages through the rest of the album.
+    await userEvent.click(within(box).getByTestId("lightbox-next"));
+    expect(
+      within(await screen.findByTestId("album-lightbox")).queryByText(
+        "The winning spike",
+      ),
+    ).toBeNull();
+  });
 });

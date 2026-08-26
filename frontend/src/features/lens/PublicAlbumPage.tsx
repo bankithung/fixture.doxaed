@@ -158,23 +158,73 @@ export function AlbumPanel({
     [q.data, liveStoryCategories, category, school],
   );
 
-  const openIdx = photos.findIndex((p) => p.upload_ref === openRef);
-  const openPhoto: PublicAlbumPhoto | null =
-    openIdx >= 0 ? photos[openIdx] : null;
+  /** EVERY picture on the page, in the order it is read: the story frames
+   * first (they lead the album) and then the wall.
+   *
+   * Story frames were not openable at all — a viewer tapping one got nothing,
+   * and the caption, the story's title and its description were nowhere to be
+   * seen (owner 2026-08-26). A picture is a picture: they all open, and they
+   * all carry what was written about them. */
+  const viewables = useMemo(() => {
+    const rows: {
+      ref: string;
+      url: string;
+      caption: string;
+      school: string;
+      award: string;
+      storyTitle: string;
+      storyDescription: string;
+      frameNo: number;
+      frameOf: number;
+    }[] = [];
+    for (const st of stories) {
+      const frames = [...st.photos].sort((a, b) => a.position - b.position);
+      frames.forEach((f, i) => {
+        rows.push({
+          ref: f.upload_ref,
+          url: f.url,
+          caption: f.caption,
+          school: st.institution_name,
+          award: f.award_category || st.award_category || "",
+          storyTitle: st.title,
+          storyDescription: st.description,
+          frameNo: i + 1,
+          frameOf: frames.length,
+        });
+      });
+    }
+    for (const p of photos) {
+      rows.push({
+        ref: p.upload_ref,
+        url: p.url,
+        caption: p.caption,
+        school: p.institution_name,
+        award: awarded(p) ? p.award_category : "",
+        storyTitle: "",
+        storyDescription: "",
+        frameNo: 0,
+        frameOf: 0,
+      });
+    }
+    return rows;
+  }, [stories, photos, awarded]);
+
+  const openIdx = viewables.findIndex((v) => v.ref === openRef);
+  const open = openIdx >= 0 ? viewables[openIdx] : null;
 
   useEffect(() => {
-    if (!openPhoto) return;
+    if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "ArrowRight" && openIdx < photos.length - 1) {
-        setOpenRef(photos[openIdx + 1].upload_ref);
+      if (e.key === "ArrowRight" && openIdx < viewables.length - 1) {
+        setOpenRef(viewables[openIdx + 1].ref);
       }
       if (e.key === "ArrowLeft" && openIdx > 0) {
-        setOpenRef(photos[openIdx - 1].upload_ref);
+        setOpenRef(viewables[openIdx - 1].ref);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openPhoto, openIdx, photos]);
+  }, [open, openIdx, viewables]);
 
   const activeFilters = (category ? 1 : 0) + (school ? 1 : 0);
   const campaign = q.data?.campaign ?? null;
@@ -436,29 +486,39 @@ export function AlbumPanel({
                             </p>
                           ) : null}
                         </div>
-                        <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {/* A board, not a filmstrip: pictures at their own
+                            height in tight columns, each one opening the
+                            viewer (owner 2026-08-26). */}
+                        <ol className="columns-2 gap-2 sm:columns-3 lg:columns-4 [&>li]:mb-2">
                           {[...s.photos]
                             .sort((a, b) => a.position - b.position)
                             .map((f) => (
-                              <li key={f.upload_ref}>
-                                <img
-                                  src={f.url}
-                                  alt={f.caption || s.institution_name}
-                                  loading="lazy"
-                                  className="aspect-[4/3] w-full rounded-md border border-border object-cover"
-                                />
-                                {/* A frame is numbered, not captioned: a story
-                                    is named once by its title, so "No caption"
-                                    under every frame was pure noise (owner
-                                    2026-08-25). */}
-                                <p className="mt-0.5 flex items-start gap-1 text-[0.6875rem] leading-snug text-muted-foreground">
-                                  <span className="font-tabular font-semibold text-foreground">
-                                    {f.position}
-                                  </span>
-                                  {f.caption ? (
-                                    <span className="min-w-0">{f.caption}</span>
+                              <li key={f.upload_ref} className="break-inside-avoid">
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenRef(f.upload_ref)}
+                                  data-testid={`frame-${f.upload_ref}`}
+                                  aria-label={`${t("Open")} ${f.caption || s.title || s.institution_name}`}
+                                  className="group relative block w-full overflow-hidden rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                >
+                                  <img
+                                    src={f.url}
+                                    alt={f.caption || s.institution_name}
+                                    loading="lazy"
+                                    className="w-full rounded-md object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                                  />
+                                  {f.award_category ? (
+                                    <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-background/90 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary backdrop-blur">
+                                      <Award aria-hidden="true" className="h-2.5 w-2.5" />
+                                      {f.award_category}
+                                    </span>
                                   ) : null}
-                                </p>
+                                  {f.caption ? (
+                                    <span className="absolute inset-x-0 bottom-0 line-clamp-2 bg-gradient-to-t from-stage/85 to-transparent px-2 pb-1.5 pt-6 text-left text-[0.6875rem] leading-snug text-stage-ink">
+                                      {f.caption}
+                                    </span>
+                                  ) : null}
+                                </button>
                               </li>
                             ))}
                         </ol>
@@ -481,7 +541,7 @@ export function AlbumPanel({
                     photos={photos}
                     isAwarded={awarded}
                     onOpen={setOpenRef}
-                    paused={openPhoto !== null}
+                    paused={open !== null}
                   />
                 </div>
               )}
@@ -622,56 +682,79 @@ export function AlbumPanel({
         }}
       />
 
-      {/* Lightbox. */}
+      {/* The viewer. Every picture on the page opens here and carries what
+          was written about it: its caption, the story it belongs to and that
+          story's description (owner 2026-08-26). */}
       <Dialog
-        open={openPhoto !== null}
+        open={open !== null}
         onOpenChange={(o) => {
           if (!o) setOpenRef(null);
         }}
         ariaLabel={t("Photo viewer")}
       >
-        {openPhoto ? (
+        {open ? (
           <div className="flex flex-col gap-3" data-testid="album-lightbox">
-            <img
-              src={openPhoto.url}
-              alt={openPhoto.caption || openPhoto.institution_name}
-              className="max-h-[65vh] w-full rounded-md object-contain"
-            />
-            <div className="flex items-center gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">
-                  {openPhoto.institution_name}
-                </p>
-                {openPhoto.caption ? (
-                  <p className="truncate text-xs text-muted-foreground">
-                    {openPhoto.caption}
-                  </p>
+            <div className="relative">
+              <img
+                src={open.url}
+                alt={open.caption || open.storyTitle || open.school}
+                className="max-h-[62vh] w-full rounded-md bg-muted object-contain"
+              />
+              {viewables.length > 1 ? (
+                <>
+                  <button
+                    type="button"
+                    aria-label={t("Previous photo")}
+                    data-testid="lightbox-prev"
+                    disabled={openIdx <= 0}
+                    onClick={() => setOpenRef(viewables[openIdx - 1]?.ref ?? null)}
+                    className="absolute left-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-background/85 text-foreground shadow-sm backdrop-blur hover:bg-background disabled:pointer-events-none disabled:opacity-0"
+                  >
+                    <ChevronLeft aria-hidden="true" className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={t("Next photo")}
+                    data-testid="lightbox-next"
+                    disabled={openIdx >= viewables.length - 1}
+                    onClick={() => setOpenRef(viewables[openIdx + 1]?.ref ?? null)}
+                    className="absolute right-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-background/85 text-foreground shadow-sm backdrop-blur hover:bg-background disabled:pointer-events-none disabled:opacity-0"
+                  >
+                    <ChevronRight aria-hidden="true" className="h-5 w-5" />
+                  </button>
+                  <span className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-background/85 px-2 py-0.5 font-tabular text-[0.6875rem] text-muted-foreground backdrop-blur">
+                    {openIdx + 1} / {viewables.length}
+                  </span>
+                </>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                {open.storyTitle ? (
+                  <h2 className="text-base font-semibold">{open.storyTitle}</h2>
+                ) : null}
+                {open.award ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                    <Award aria-hidden="true" className="h-3 w-3" />
+                    {open.award}
+                  </span>
+                ) : null}
+                {open.frameOf > 1 ? (
+                  <span className="ml-auto font-tabular text-xs text-muted-foreground">
+                    {t("Photo")} {open.frameNo} {t("of")} {open.frameOf}
+                  </span>
                 ) : null}
               </div>
-              {awarded(openPhoto) ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                  <Award aria-hidden="true" className="h-3 w-3" />
-                  {openPhoto.award_category}
-                </span>
+              <p className="text-sm text-muted-foreground">{open.school}</p>
+              {open.storyDescription ? (
+                <p className="text-sm leading-relaxed">{open.storyDescription}</p>
               ) : null}
-              <button
-                type="button"
-                aria-label={t("Previous photo")}
-                disabled={openIdx <= 0}
-                onClick={() => setOpenRef(photos[openIdx - 1]?.upload_ref ?? null)}
-                className="rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
-              >
-                <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                aria-label={t("Next photo")}
-                disabled={openIdx >= photos.length - 1}
-                onClick={() => setOpenRef(photos[openIdx + 1]?.upload_ref ?? null)}
-                className="rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
-              >
-                <ChevronRight aria-hidden="true" className="h-4 w-4" />
-              </button>
+              {open.caption ? (
+                <p className="border-t border-border pt-2 text-sm leading-relaxed">
+                  {open.caption}
+                </p>
+              ) : null}
             </div>
           </div>
         ) : null}
