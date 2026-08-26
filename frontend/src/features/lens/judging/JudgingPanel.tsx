@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Gavel, Plus, Trash2 } from "lucide-react";
-import { judgingApi } from "@/api/lens";
+import { Copy, Gavel, Plus, Trash2, Trophy } from "lucide-react";
+import { judgingApi, lensApi } from "@/api/lens";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
@@ -18,14 +18,16 @@ import { t } from "@/lib/t";
  */
 export function JudgingPanel({
   campaignId,
+  tournamentId,
 }: {
   campaignId: string;
+  /** Awarding is a tournament-scoped verb, so the panel needs both ids. */
+  tournamentId: string;
 }): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
   const [name, setName] = useState("");
   const [minted, setMinted] = useState<{ name: string; url: string } | null>(null);
-  const [showResults, setShowResults] = useState(false);
 
   const judgesQ = useQuery({
     queryKey: ["lens-judges", campaignId],
@@ -34,7 +36,6 @@ export function JudgingPanel({
   const resultsQ = useQuery({
     queryKey: ["lens-judging", campaignId],
     queryFn: () => judgingApi.results(campaignId),
-    enabled: showResults,
   });
 
   const appoint = useMutation({
@@ -46,6 +47,36 @@ export function JudgingPanel({
     },
     onError: () =>
       toast.push({ kind: "error", title: t("Could not appoint that judge.") }),
+  });
+
+  /* Carrying the verdict into the award: the panel decides, the organiser
+     records it. Without this the scores were a number nobody could act on. */
+  const award = useMutation({
+    mutationFn: ({
+      kind,
+      id,
+      category,
+    }: {
+      kind: "photo" | "story";
+      id: string;
+      category: string;
+    }) =>
+      (kind === "story"
+        ? lensApi.awardStory(tournamentId, id, {
+            event_id: crypto.randomUUID(),
+            category,
+          })
+        : lensApi.award(tournamentId, id, {
+            event_id: crypto.randomUUID(),
+            category,
+          })) as Promise<unknown>,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["lens-judging", campaignId] });
+      void qc.invalidateQueries({ queryKey: ["lens"] });
+      toast.push({ kind: "success", title: t("Award recorded") });
+    },
+    onError: () =>
+      toast.push({ kind: "error", title: t("Could not record that award.") }),
   });
 
   const revoke = useMutation({
@@ -169,58 +200,79 @@ export function JudgingPanel({
         </ul>
       )}
 
-      <div className="border-t border-border pt-3">
-        <Button
-          size="sm"
-          variant="outline"
-          data-testid="toggle-results"
-          onClick={() => setShowResults(!showResults)}
-        >
-          {showResults ? t("Hide results") : t("Show results")}
-        </Button>
-        {showResults ? (
-          <div className="mt-3 flex flex-col gap-4" data-testid="judging-results">
-            {(resultsQ.data?.categories ?? []).map((cat) => (
-              <div key={cat.category} className="flex flex-col gap-1.5">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {cat.category}
-                </h4>
-                {cat.entries.map((e) => (
-                  <div
-                    key={e.id}
-                    className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
-                  >
-                    <span className="w-6 shrink-0 font-tabular text-xs text-muted-foreground">
-                      {e.rank ?? "—"}
-                    </span>
-                    <img
-                      src={e.photos[0]?.thumb_url}
-                      alt=""
-                      className="h-9 w-12 shrink-0 rounded object-cover"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs font-medium">
-                        {e.caption || t("Untitled")}
-                      </span>
-                      <span className="block truncate text-[0.6875rem] text-muted-foreground">
-                        {e.school}
-                        {e.photographer ? ` · ${e.photographer}` : ""}
-                      </span>
-                    </span>
-                    <span className="shrink-0 text-right">
-                      <span className="block font-tabular text-sm font-semibold">
-                        {e.average ?? "—"}
-                      </span>
-                      <span className="block text-[0.625rem] text-muted-foreground">
-                        {e.judges} {e.judges === 1 ? t("judge") : t("judges")}
-                      </span>
-                    </span>
-                  </div>
-                ))}
+      <div className="flex flex-col gap-4 border-t border-border pt-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {t("The panel's verdict")}
+        </h4>
+        {(resultsQ.data?.categories ?? []).length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+            {t("No entries have been scored yet.")}
+          </p>
+        ) : null}
+        {(resultsQ.data?.categories ?? []).map((cat) => (
+          <div key={cat.category} className="flex flex-col gap-1.5">
+            <h5 className="text-xs font-semibold">{cat.category}</h5>
+            {cat.entries.map((e) => (
+              <div
+                key={e.id}
+                data-testid={`result-${e.id}`}
+                className={cn(
+                  "flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm",
+                  e.rank === 1
+                    ? "border-primary/40 bg-primary/5"
+                    : "border-border",
+                )}
+              >
+                <span className="w-6 shrink-0 font-tabular text-xs text-muted-foreground">
+                  {e.rank ?? "\u2014"}
+                </span>
+                {e.photos[0] ? (
+                  <img
+                    src={e.photos[0].thumb_url}
+                    alt=""
+                    className="h-9 w-12 shrink-0 rounded object-cover"
+                  />
+                ) : null}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium">
+                    {e.caption || t("Untitled")}
+                  </span>
+                  <span className="block truncate text-[0.6875rem] text-muted-foreground">
+                    {e.school}
+                    {e.photographer ? ` \u00b7 ${e.photographer}` : ""}
+                  </span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block font-tabular text-sm font-semibold">
+                    {e.average ?? "\u2014"}
+                  </span>
+                  <span className="block text-[0.625rem] text-muted-foreground">
+                    {e.judges} {e.judges === 1 ? t("judge") : t("judges")}
+                  </span>
+                </span>
+                {/* The panel scores; the organiser records the result. One
+                    button carries the verdict into the award rather than
+                    leaving the two unconnected (owner 2026-08-26). */}
+                <Button
+                  size="sm"
+                  variant={e.rank === 1 ? "default" : "outline"}
+                  data-testid={`award-${e.id}`}
+                  disabled={award.isPending || e.average === null}
+                  onClick={() =>
+                    award.mutate({
+                      kind: e.kind,
+                      id: e.id,
+                      category: cat.category,
+                    })
+                  }
+                >
+                  <Trophy className="mr-1.5 h-3.5 w-3.5" />
+                  {t("Award")}
+                </Button>
               </div>
             ))}
           </div>
-        ) : null}
+        ))}
       </div>
     </section>
   );

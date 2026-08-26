@@ -1460,7 +1460,7 @@ export function LensConsolePage(): React.ReactElement {
 
         {tab === "judging" && campaignId ? (
           <div className="p-3">
-            <JudgingPanel campaignId={campaignId} />
+            <JudgingPanel campaignId={campaignId} tournamentId={id} />
           </div>
         ) : null}
 
