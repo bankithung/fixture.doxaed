@@ -37,16 +37,44 @@ function m(
   } as PublicScheduleMatch;
 }
 
-function mount(matches: PublicScheduleMatch[]) {
+function mount(
+  matches: PublicScheduleMatch[],
+  rosters?: Map<string, { id: string; name: string; jersey_no: number | null; captain: boolean }[]>,
+) {
   return render(
     <MemoryRouter>
       <CompetitionSpotlight
         matches={matches}
         timeZone="Asia/Kolkata"
         title="Table Tennis · U-14 · Boys · Singles"
+        rosters={rosters as never}
       />
     </MemoryRouter>,
   );
+}
+
+/** A team sheet keyed the way `usePublicRosters` builds it. */
+function sheet(...rows: [string, string[]][]) {
+  return new Map(
+    rows.map(([teamId, names]) => [
+      teamId,
+      names.map((name, i) => ({
+        id: `${teamId}-${i}`,
+        name,
+        jersey_no: null,
+        captain: false,
+      })),
+    ]),
+  );
+}
+
+async function openBoard() {
+  Object.defineProperty(Element.prototype, "requestFullscreen", {
+    configurable: true,
+    writable: true,
+    value: vi.fn().mockResolvedValue(undefined),
+  });
+  await userEvent.click(screen.getByTestId("spotlight-fullscreen"));
 }
 
 describe("spotlightPick", () => {
@@ -291,6 +319,62 @@ describe("CompetitionSpotlight", () => {
     const meta = screen.getByTestId("spotlight-meta");
     expect(meta).toHaveTextContent("13:45");
     expect(meta).toHaveTextContent("Mph · T1");
+  });
+
+  it("names the players on a singles or doubles board", async () => {
+    // Owner 2026-08-26: "for tt we can" show the player names. A side of one
+    // or two IS the person or pair the hall is watching.
+    mount(
+      [m({ id: "live", status: "live" })],
+      sheet(["a", ["Niputo Assumi"]], ["b", ["Soumen Paul"]]),
+    );
+    await openBoard();
+
+    expect(screen.getByText("Niputo Assumi")).toBeInTheDocument();
+    expect(screen.getByText("Soumen Paul")).toBeInTheDocument();
+    // The school stays the headline, the player sits under it.
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+  });
+
+  it("names both halves of a doubles pair", async () => {
+    mount(
+      [m({ id: "live", status: "live" })],
+      sheet(["a", ["Vihika I Awomi", "Kinoka I Awomi"]], ["b", ["I Lomi Sumi", "Joyce Yanna Thapa"]]),
+    );
+    await openBoard();
+    expect(screen.getByText("Vihika I Awomi")).toBeInTheDocument();
+    expect(screen.getByText("Kinoka I Awomi")).toBeInTheDocument();
+  });
+
+  it("does NOT name a squad, which is what sepak and football are", async () => {
+    // Owner 2026-08-26: "for sepak we dont have to show the names here".
+    // Five names a side is clutter on a board read from 20m away — and the
+    // rule is the squad size, not a sport check, so football behaves too.
+    const regu = ["Sojanthung Jami", "Methuselah Gurung", "Toika Shohe", "Huka V. Assumi", "Thangjoysang Limsong"];
+    mount([m({ id: "live", status: "live" })], sheet(["a", regu], ["b", regu.slice(0, 5)]));
+    await openBoard();
+
+    for (const n of regu) expect(screen.queryByText(n)).toBeNull();
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+  });
+
+  it("names both sides or neither, never one", async () => {
+    // A board naming one pair and leaving the other blank reads as missing
+    // data rather than as a rule.
+    mount(
+      [m({ id: "live", status: "live" })],
+      sheet(["a", ["Solo Player"]], ["b", ["One", "Two", "Three"]]),
+    );
+    await openBoard();
+    expect(screen.queryByText("Solo Player")).toBeNull();
+  });
+
+  it("shows no names at all when the rosters never loaded", async () => {
+    mount([m({ id: "live", status: "live" })]);
+    await openBoard();
+    // The board still stands up on the school names alone.
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Bravo")).toBeInTheDocument();
   });
 
   it("moves to the next match on its own once the live one finishes", () => {

@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Maximize2, Minimize2 } from "lucide-react";
-import type { PublicScheduleMatch, PublicScheduleSide } from "@/api/tournaments";
+import type {
+  PublicScheduleMatch,
+  PublicScheduleSide,
+} from "@/api/tournaments";
 import { TeamCrest } from "@/components/ui/TeamCrest";
 import { WatchLiveLink } from "@/features/live/WatchLiveLink";
 import { routes } from "@/lib/routes";
@@ -12,6 +15,7 @@ import {
   shortGroup,
   spotlightNextUp,
   spotlightPick,
+  type RosterIndex,
   type SpotlightKind,
 } from "./publicTournament";
 import { LivePulse, TeamName, fmtKickoff } from "./publicMatchCard";
@@ -62,6 +66,17 @@ import { LivePulse, TeamName, fmtKickoff } from "./publicMatchCard";
  *    ("3rd Place") via `shortGroup`; a kickoff shown as the centrepiece of an
  *    unplayed match is not repeated underneath itself.
  *
+ * 5. **It names the people when the people ARE the competitors** (owner
+ *    2026-08-26: "for sepak we dont have to show the names here but for tt we
+ *    can"). Not a sport check: a side of one or two IS a person or a pair, and
+ *    that is who the hall is watching. A regu of five, or a football eleven,
+ *    is a team you name by its school, and five names a side would be clutter
+ *    on a board read from 20m away. So the rule is the squad size, which makes
+ *    badminton and any future 1v1 or 2v2 behave correctly with no new branch.
+ *    The school stays the headline and the players sit under it, a little
+ *    smaller ("the team names can be a bit smaller and then we can show the
+ *    players names").
+ *
  * The button asks the browser for real fullscreen (`requestFullscreen`, which
  * hides the browser's own chrome) AND lays the section out as a fixed
  * full-viewport board. Both, because the two fail differently: the API is
@@ -82,7 +97,9 @@ const KIND_LABEL: Record<SpotlightKind, string> = {
  * screen, and the middle term is what carries it between the two. */
 const BOARD = {
   bar: "text-[clamp(0.875rem,1.7vw,2rem)]",
-  name: "text-[clamp(1.125rem,3.4vw,4rem)]",
+  // Smaller than the first cut, to leave room under it for the people.
+  name: "text-[clamp(1rem,2.7vw,3.25rem)]",
+  player: "text-[clamp(0.875rem,2.1vw,2.5rem)]",
   score: "text-[clamp(3.5rem,15vw,16rem)]",
   clock: "text-[clamp(2.5rem,10vw,10rem)]",
   meta: "text-[clamp(0.875rem,1.9vw,2rem)]",
@@ -100,8 +117,11 @@ function fullscreenElement(): Element | null {
  * screen nobody can tap has no use for either. */
 function BoardSide({
   side,
+  players,
 }: {
   side: PublicScheduleSide | null;
+  /** Who is actually on court. Empty = a squad too big to name here. */
+  players: string[];
 }): React.ReactElement {
   return (
     <div className="flex min-w-0 flex-col items-center gap-[clamp(0.5rem,1.5vw,1.5rem)] text-center">
@@ -110,28 +130,67 @@ function BoardSide({
         name={side?.name ?? ""}
         className={BOARD.crest}
       />
-      <span
-        className={cn(
-          "max-w-full font-semibold leading-tight [overflow-wrap:anywhere]",
-          BOARD.name,
-        )}
-      >
-        {side?.name ?? t("TBD")}
-      </span>
+      <div className="flex min-w-0 max-w-full flex-col gap-[0.25em]">
+        <span
+          className={cn(
+            "max-w-full font-semibold leading-tight [overflow-wrap:anywhere]",
+            BOARD.name,
+          )}
+        >
+          {side?.name ?? t("TBD")}
+        </span>
+        {players.map((n) => (
+          <span
+            key={n}
+            className={cn(
+              "max-w-full font-medium leading-tight text-muted-foreground [overflow-wrap:anywhere]",
+              BOARD.player,
+            )}
+          >
+            {n}
+          </span>
+        ))}
+      </div>
     </div>
   );
+}
+
+/**
+ * The names to print under each side, or none.
+ *
+ * Both sides or neither: a board that named one pair and not the other would
+ * read as missing data rather than as a rule. The cap is what makes it a rule
+ * — at most two on a side means the competitors ARE these people, which is
+ * true of singles and doubles in any sport and false of every squad game.
+ */
+const NAMEABLE_SQUAD = 2;
+
+function boardSheets(
+  m: PublicScheduleMatch,
+  rosters: RosterIndex | undefined,
+): { home: string[]; away: string[] } {
+  const none = { home: [], away: [] };
+  if (!rosters) return none;
+  const home = m.home ? (rosters.get(m.home.id) ?? []) : [];
+  const away = m.away ? (rosters.get(m.away.id) ?? []) : [];
+  const biggest = Math.max(home.length, away.length);
+  if (biggest === 0 || biggest > NAMEABLE_SQUAD) return none;
+  return { home: home.map((p) => p.name), away: away.map((p) => p.name) };
 }
 
 export function CompetitionSpotlight({
   matches,
   timeZone,
   title,
+  rosters,
 }: {
   /** Every match of ONE competition. The pick is made here, not by the page. */
   matches: PublicScheduleMatch[];
   timeZone: string;
   /** The competition's own name, so the board says what it is showing. */
   title?: string;
+  /** Team sheets, so a singles or doubles board can name the players. */
+  rosters?: RosterIndex;
 }): React.ReactElement | null {
   const [board, setBoard] = useState(false);
   const ref = useRef<HTMLElement>(null);
@@ -187,6 +246,7 @@ export function CompetitionSpotlight({
   // A knockout's group_label IS its competition label, so unfiltered it
   // reprinted the heading one line below itself.
   const stageBit = shortGroup(m.group_label, m.leaf_label);
+  const sheets = boardSheets(m, rosters);
   // An unplayed match wears its kickoff as the centrepiece; repeating it in the
   // meta line under itself is the same fact twice.
   const meta = [stageBit, played ? kickoff : "", m.venue].filter(Boolean);
@@ -267,7 +327,7 @@ export function CompetitionSpotlight({
         )}
       >
         {board ? (
-          <BoardSide side={m.home} />
+          <BoardSide side={m.home} players={sheets.home} />
         ) : (
           <TeamName
             side={m.home}
@@ -315,7 +375,7 @@ export function CompetitionSpotlight({
           ) : null}
         </div>
         {board ? (
-          <BoardSide side={m.away} />
+          <BoardSide side={m.away} players={sheets.away} />
         ) : (
           <TeamName
             side={m.away}
