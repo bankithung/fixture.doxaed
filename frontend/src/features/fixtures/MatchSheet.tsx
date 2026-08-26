@@ -49,13 +49,13 @@ export function TeamSheet({
 }): React.ReactElement {
   if (!players || players.length === 0) {
     return (
-      <span className="mt-0.5 block pl-[1.375rem] text-[0.6875rem] italic leading-tight text-muted-foreground">
+      <span className="mt-0.5 block pl-[1.375rem] text-[0.78em] italic leading-tight text-muted-foreground">
         {t("No team sheet")}
       </span>
     );
   }
   return (
-    <ol className="mt-0.5 flex flex-col gap-px pl-[1.375rem] text-[0.6875rem] leading-tight text-muted-foreground">
+    <ol className="mt-0.5 flex flex-col gap-px pl-[1.375rem] text-[0.78em] leading-tight text-muted-foreground">
       {players.map((p) => (
         <li key={p.id} className="whitespace-normal">
           {p.jersey_no != null ? (
@@ -90,7 +90,7 @@ function TeamCell({
     return (
       <span
         className={cn(
-          "block truncate text-xs",
+          "block truncate text-[0.9em]",
           waiting ? "text-muted-foreground" : "italic text-muted-foreground",
         )}
       >
@@ -126,26 +126,34 @@ function ScoreCell({ m }: { m: PublicScheduleMatch }): React.ReactElement {
   const live = LIVE_STATUSES.has(m.status);
   const final = FINAL_STATUSES.has(m.status);
   if (!live && !final) {
-    return <span className="text-xs text-muted-foreground">{t("Not played")}</span>;
+    return (
+      <span className="text-[0.85em] text-muted-foreground">{t("Not played")}</span>
+    );
   }
-  const sets = sv ? sv.finished : (m.set_scores ?? []);
   const hasPens = m.home_pens != null && m.away_pens != null;
   const headline = sv
     ? `${sv.points[0]}-${sv.points[1]}`
     : `${m.home_score ?? 0}-${m.away_score ?? 0}`;
-  const detail = [
-    sv ? `${t("Sets")} ${sv.sets[0]}-${sv.sets[1]}` : "",
-    sets.map(([h, a]) => `${h}-${a}`).join(" · "),
-    hasPens ? `(${m.home_pens}-${m.away_pens} ${t("pens")})` : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  // A sheet row is ONE line. The set-by-set breakdown turned every played row
+  // into three and made the day unscannable; it is in the match, which is one
+  // tap away (owner 2026-08-25). Only a live match keeps a detail line, and
+  // only the set count — that is the thing a row cannot otherwise say.
+  const detail = live
+    ? [
+        sv ? `${t("Sets")} ${sv.sets[0]}-${sv.sets[1]}` : "",
+        hasPens ? `(${m.home_pens}-${m.away_pens} ${t("pens")})` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : hasPens
+      ? `(${m.home_pens}-${m.away_pens} ${t("pens")})`
+      : "";
   return (
     <span className="flex flex-col items-end">
       <span
         data-testid={`sheet-score-${m.id}`}
         className={cn(
-          "font-tabular text-sm font-semibold",
+          "font-tabular text-[1em] font-semibold",
           live && "text-primary",
         )}
       >
@@ -154,7 +162,7 @@ function ScoreCell({ m }: { m: PublicScheduleMatch }): React.ReactElement {
       {detail ? (
         <span
           data-testid={`sheet-detail-${m.id}`}
-          className="font-tabular text-[0.6875rem] leading-tight text-muted-foreground"
+          className="font-tabular text-[0.78em] leading-tight text-muted-foreground"
         >
           {detail}
         </span>
@@ -246,12 +254,12 @@ export function MatchSheet({
       <table
         data-testid={`${idScope}-table`}
         className={cn(
-          "w-full border-collapse text-sm",
+          "w-full border-collapse text-[clamp(0.75rem,0.66rem+0.28vw,1rem)]",
           showCompetition ? "min-w-[62rem]" : "min-w-[46rem]",
         )}
       >
         <thead>
-          <tr className="border-b border-border bg-muted text-[0.625rem] uppercase tracking-wide text-muted-foreground">
+          <tr className="border-b border-border bg-muted text-[0.72em] uppercase tracking-wide text-muted-foreground">
             {heads.map((h) => (
               <th
                 key={h.key}
@@ -303,7 +311,7 @@ export function MatchSheet({
                   <span
                     data-testid={`${idScope}-no-${m.id}`}
                     className={cn(
-                      "font-tabular text-xs font-semibold",
+                      "font-tabular text-[0.85em] font-semibold",
                       live ? "text-primary" : "text-muted-foreground",
                     )}
                   >
@@ -311,21 +319,32 @@ export function MatchSheet({
                   </span>
                 </td>
                 {showDay ? (
-                  <td data-col="day" className="whitespace-nowrap px-3 py-2 align-middle text-xs text-muted-foreground">
+                  <td data-col="day" className="whitespace-nowrap px-3 py-2 align-middle text-[0.85em] text-muted-foreground">
                     {m.day ? fmtDayShort(m.day) : t("TBD")}
                   </td>
                 ) : null}
-                <td data-col="time" className="whitespace-nowrap px-3 py-2 align-middle font-tabular text-xs">
+                <td data-col="time" className="whitespace-nowrap px-3 py-2 align-middle font-tabular text-[0.9em]">
                   {fmtKickoff(m.scheduled_at, timeZone)}
                 </td>
                 {showCourt ? (
-                  <td data-col="court" className="truncate px-3 py-2 align-middle text-xs text-muted-foreground">
+                  <td data-col="court" className="truncate px-3 py-2 align-middle text-[0.85em] text-muted-foreground">
                     {m.venue || t("No court yet")}
                   </td>
                 ) : null}
                 {showCompetition ? (
-                  <td data-col="event" className="px-3 py-2 align-middle">
-                    <LabelChips label={m.leaf_label} />
+                  <td
+                    data-col="event"
+                    className="max-w-0 px-3 py-2 align-middle"
+                  >
+                    {/* Chips, on ONE line. They wrapped four rows deep for
+                        "Table Tennis / Open Category / Boys / Doubles" and
+                        stacked the whole sheet (owner 2026-08-25) — but a
+                        dashed blob is the thing chips exist to avoid, so the
+                        row clips instead of unwrapping. */}
+                    <LabelChips
+                      label={m.leaf_label}
+                      className="flex w-full flex-nowrap overflow-hidden"
+                    />
                   </td>
                 ) : null}
                 <td
@@ -368,7 +387,7 @@ export function MatchSheet({
                     <span
                       data-testid={`${idScope}-winner-${m.id}`}
                       title={win.name}
-                      className="flex items-center gap-1.5 truncate text-xs font-semibold"
+                      className="flex items-center gap-1.5 truncate whitespace-nowrap text-[0.85em] font-semibold"
                     >
                       <TeamCrest src={win.crest} name={win.name} size="xs" />
                       {/* The full name, truncated: a parent scanning "who
@@ -377,7 +396,7 @@ export function MatchSheet({
                       <span className="truncate">{win.name}</span>
                     </span>
                   ) : (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-[0.85em] text-muted-foreground">
                       {LIVE_STATUSES.has(m.status) ? t("In play") : ""}
                     </span>
                   )}
@@ -388,7 +407,7 @@ export function MatchSheet({
                     {m.id === nextId ? (
                       <span
                         data-testid={`flag-${m.id}`}
-                        className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.6875rem] font-medium text-primary"
+                        className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.78em] font-medium text-primary"
                       >
                         {t("Next up")}
                       </span>
@@ -398,17 +417,18 @@ export function MatchSheet({
                     {live && (sv || m.current_period) ? (
                       <span
                         data-testid={`period-${m.id}`}
-                        className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.6875rem] font-medium capitalize text-primary"
+                        className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.78em] font-medium capitalize text-primary"
                       >
                         {sv
                           ? `${t("Set")} ${sv.setNo}`
                           : t(m.current_period.replace(/_/g, " "))}
                       </span>
                     ) : null}
+                    {/* A finished match has nothing to watch live. */}
                     <WatchLiveLink
-                      url={m.watch_url}
+                      url={live ? m.watch_url : null}
                       variant="ghost"
-                      className="pointer-events-auto relative z-10 h-6 px-1.5 text-[0.6875rem] text-primary hover:bg-primary/10"
+                      className="pointer-events-auto relative z-10 h-6 px-1.5 text-[0.78em] text-primary hover:bg-primary/10"
                       testid={`watch-live-${m.id}`}
                       label={t("Watch this match live on YouTube")}
                     />

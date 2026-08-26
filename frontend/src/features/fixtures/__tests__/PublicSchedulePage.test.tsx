@@ -386,16 +386,16 @@ describe("PublicSchedulePage", () => {
     mount();
     const m2 = await screen.findByTestId("court-Main Ground-row-m2");
     expect(within(m2).getByTestId("period-m2")).toHaveTextContent("first half");
-    // Live set sport (tap scoring): the HEADLINE is the running set's points;
-    // sets won + finished sets ride the sub-line; the chip derives "Set N"
-    // from the set list (football current_period never labels a set sport).
+    // Live set sport (tap scoring): the HEADLINE is the running set's points
+    // and the sub-line says how the SETS stand; the chip derives "Set N" from
+    // the set list (football current_period never labels a set sport).
     const m5 = screen.getByTestId("court-Table Hall-row-m5");
-    // The score column carries the running set's points; sets won and the
-    // finished sets ride under it.
     expect(within(m5).getByTestId("sheet-score-m5")).toHaveTextContent("8-11");
-    expect(within(m5).getByTestId("sheet-detail-m5")).toHaveTextContent(
-      "Sets 1-1 · 11-7",
-    );
+    expect(within(m5).getByTestId("sheet-detail-m5")).toHaveTextContent("Sets 1-1");
+    // The set-by-set breakdown is NOT in the row: it turned every played match
+    // into three lines and made the day unscannable (owner 2026-08-25). It is
+    // in the match, one tap away.
+    expect(within(m5).getByTestId("sheet-detail-m5")).not.toHaveTextContent("11-7");
     expect(within(m5).getByTestId("period-m5")).toHaveTextContent("Set 2");
   });
 

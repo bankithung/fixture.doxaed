@@ -30,7 +30,7 @@ export function LabelChips({
         <span
           key={`${p}-${i}`}
           className={cn(
-            "rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium leading-tight",
+            "shrink-0 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium leading-tight",
             !omitSport && i === 0
               ? "bg-primary/10 text-primary"
               : "bg-muted text-muted-foreground",
