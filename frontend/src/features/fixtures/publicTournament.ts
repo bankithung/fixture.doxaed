@@ -349,6 +349,78 @@ export function slotLabel(
   return null;
 }
 
+/** What a competition's spotlight is showing, and why. */
+export type SpotlightKind = "live" | "next" | "done";
+
+export interface Spotlight {
+  match: PublicScheduleMatch;
+  kind: SpotlightKind;
+}
+
+/** Sort key for a match on the clock. Unscheduled sorts last, because a match
+ * with no time cannot be the one happening now or next. */
+function whenOf(m: PublicScheduleMatch): number {
+  const raw = m.scheduled_at ? Date.parse(m.scheduled_at) : NaN;
+  return Number.isNaN(raw) ? Number.POSITIVE_INFINITY : raw;
+}
+
+/**
+ * The ONE match a competition is about right now (owner 2026-08-26: "one
+ * section above the groups that shows the current one or the next or
+ * completed").
+ *
+ * The order is what a spectator standing at the court cares about, in that
+ * order: what is on now, else what is on next, else how it ended. Nothing is
+ * remembered between calls — the pick is derived from the payload, so a live
+ * match that finishes stops being live and the NEXT one takes the spotlight on
+ * the very next tick, which is what "once done we will show the next match"
+ * means without any timer.
+ *
+ * `done` deliberately looks BACKWARD to the latest result rather than the
+ * final: a competition still in its group stage has no final yet, and the last
+ * thing played is the honest answer to "what happened".
+ */
+export function spotlightPick(
+  matches: PublicScheduleMatch[],
+): Spotlight | null {
+  const live = matches
+    .filter((m) => LIVE_STATUSES.has(m.status))
+    .sort((a, b) => whenOf(a) - whenOf(b));
+  if (live[0]) return { match: live[0], kind: "live" };
+
+  const upcoming = matches
+    .filter((m) => !LIVE_STATUSES.has(m.status) && !FINAL_STATUSES.has(m.status))
+    // An unscheduled match is not "next" while a scheduled one exists, but it
+    // is still better than nothing once every timed match has been played.
+    .sort((a, b) => whenOf(a) - whenOf(b));
+  if (upcoming[0]) return { match: upcoming[0], kind: "next" };
+
+  const done = matches
+    .filter((m) => FINAL_STATUSES.has(m.status))
+    .sort((a, b) => whenOf(b) - whenOf(a));
+  if (done[0]) return { match: done[0], kind: "done" };
+
+  return null;
+}
+
+/** The match that follows the spotlight one, so a full-screen board can say
+ * what is coming without the viewer touching anything. Null when the
+ * spotlight is already the last word. */
+export function spotlightNextUp(
+  matches: PublicScheduleMatch[],
+  current: PublicScheduleMatch,
+): PublicScheduleMatch | null {
+  const rest = matches
+    .filter(
+      (m) =>
+        m.id !== current.id &&
+        !LIVE_STATUSES.has(m.status) &&
+        !FINAL_STATUSES.has(m.status),
+    )
+    .sort((a, b) => whenOf(a) - whenOf(b));
+  return rest[0] ?? null;
+}
+
 /** The side that won, once one has: `null` while a match is unplayed, live or
  * drawn. Walkovers count — a walkover HAS a winner. */
 export function winnerOf(

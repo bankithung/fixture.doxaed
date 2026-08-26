@@ -50,6 +50,7 @@ import {
   statusMeta,
   teamHit,
 } from "./publicMatchCard";
+import { CompetitionSpotlight } from "./CompetitionSpotlight";
 import { CourtBoard, courtDefaultFits } from "./CourtBoard";
 import { MatchSheet } from "./MatchSheet";
 import { MatchDrawer } from "./MatchDrawer";
@@ -1213,14 +1214,25 @@ function PublicScheduleInner(): React.ReactElement {
                     ) : null}
                   </div>
 
-                  {/* Live is the one band left. "Up next" is gone: a sheet
-                      flags its OWN next match in the Status column, which is
-                      the same answer without a second list to read. Standings
-                      are gone too — they have their own tab (owner
-                      2026-08-21). */}
+                  {/* A competition page leads with ONE match — live, else
+                      next, else the last result — and that section is what
+                      goes full screen on the hall's projector (owner
+                      2026-08-26). The live band stays on Today, where several
+                      courts really are playing at once and the answer is a
+                      list. "Up next" as a band is still gone: a sheet flags
+                      its OWN next match in the Status column, and standings
+                      have their own tab (owner 2026-08-21). */}
                   {selected === "knockout" ? null : (
                     <>
-                      <LiveBand matches={bandLive} timeZone={tz} />
+                      {selectedComp ? (
+                        <CompetitionSpotlight
+                          matches={selectedComp.matches}
+                          timeZone={tz}
+                          title={selectedComp.label}
+                        />
+                      ) : (
+                        <LiveBand matches={bandLive} timeZone={tz} />
+                      )}
                       <FollowedBand matches={bandMatches} timeZone={tz} />
                     </>
                   )}

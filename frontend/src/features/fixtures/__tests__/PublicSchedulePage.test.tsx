@@ -358,25 +358,38 @@ describe("PublicSchedulePage", () => {
     );
   });
 
-  it("scopes the Now-playing band to the open competition, and hides it when that competition has nothing live", async () => {
+  it("gives Today the live band and a competition its own one-match spotlight", async () => {
+    // Today is a LIST, because several courts really are playing at once. A
+    // competition is ONE match (owner 2026-08-26), because that is what a
+    // spectator at that court is watching — and unlike the band it is never
+    // absent, so a category with nothing live still opens on an answer rather
+    // than on a wall of finished tables.
     mount();
     await screen.findByTestId("public-day-2026-06-20");
-    // Today = the whole tournament: both live games.
     expect(within(screen.getByTestId("live-band")).getByTestId("live-tile-m5"))
       .toBeInTheDocument();
+    expect(screen.queryByTestId("competition-spotlight")).toBeNull();
 
     // Football U-15 is live (m2); Table Tennis' live game (m5) belongs to a
     // competition the viewer did not open and must not appear.
     await userEvent.click(screen.getByTestId("rail-comp-football.u15"));
-    const band = await screen.findByTestId("live-band");
-    expect(within(band).getByTestId("live-tile-m2")).toBeInTheDocument();
-    expect(within(band).queryByTestId("live-tile-m5")).toBeNull();
+    const spot = await screen.findByTestId("competition-spotlight");
+    expect(spot).toHaveAttribute("data-kind", "live");
+    expect(spot).toHaveTextContent("Carol FC");
+    expect(spot).not.toHaveTextContent("Echo TT");
+    expect(screen.queryByTestId("live-band")).toBeNull();
 
-    // Football U-17 has no live match: no band at all, not an empty one.
+    // Football U-17 has nothing live, and still leads with its next match
+    // rather than with nothing.
     await userEvent.click(screen.getByTestId("rail-comp-football.u17"));
-    await waitFor(() => expect(screen.queryByTestId("live-band")).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByTestId("competition-spotlight")).toHaveAttribute(
+        "data-kind",
+        "next",
+      ),
+    );
 
-    // Back to Today and everything returns.
+    // Back to Today and the band returns.
     await userEvent.click(screen.getByTestId("rail-today"));
     const back = await screen.findByTestId("live-band");
     expect(within(back).getByTestId("live-tile-m5")).toBeInTheDocument();
