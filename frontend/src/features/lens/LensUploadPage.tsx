@@ -160,6 +160,10 @@ export function LensUploadPage({
   // (mandatory title before upload) and in the story band afterwards.
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [storyDescDraft, setStoryDescDraft] = useState("");
+  // The competition rules require a photographer's name on every submission,
+  // and it is not always the person holding the pass (owner 2026-08-26). It
+  // is remembered for the session so a school types it once.
+  const [photographer, setPhotographer] = useState("");
   const resetStoryDrafts = (): void => {
     setTitleDraft(null);
     setStoryDescDraft("");
@@ -377,6 +381,7 @@ export function LensUploadPage({
         const fd = new FormData();
         fd.append("file", compact, compact.name);
         if (photo.caption.trim()) fd.append("caption", photo.caption.trim());
+        if (photographer.trim()) fd.append("photographer", photographer.trim());
         if (category) fd.append("category", category);
         fd.append("event_id", newEventId());
         const res = await lensApi.upload(token, fd);
@@ -629,6 +634,21 @@ export function LensUploadPage({
                       </li>
                     ))}
                   </ul>
+
+                  <label className="mt-2.5 flex flex-col gap-1">
+                    <span className="text-xs font-medium">
+                      {t("Photographer")}
+                    </span>
+                    <input
+                      value={photographer}
+                      data-testid="photographer-input"
+                      maxLength={120}
+                      placeholder={t("Who took these photos")}
+                      aria-label={t("Photographer")}
+                      onChange={(e) => setPhotographer(e.target.value)}
+                      className="h-10 w-full rounded-md border border-border bg-card px-2.5 text-sm"
+                    />
+                  </label>
 
                   {/* A STORY batch names itself here, BEFORE uploading:
                       title is mandatory, description optional. It sits under

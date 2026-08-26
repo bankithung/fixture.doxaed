@@ -1,4 +1,3 @@
-import { Play } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
@@ -14,11 +13,14 @@ import { t } from "@/lib/t";
  * It is an anchor, not a button-with-onClick: middle-click, long-press and
  * "open in new tab" all have to work, and it leaves the page it sits on alive —
  * the live score behind it keeps ticking over its own SSE stream.
+ *
+ * It is RED, everywhere (owner 2026-08-26). Red is what "live" means on every
+ * platform this links out to, and it is the one control on a board of results
+ * that is offering something happening right now.
  */
 export function WatchLiveLink({
   url,
   size = "sm",
-  variant = "outline",
   className,
   testid = "watch-live",
   label,
@@ -26,7 +28,6 @@ export function WatchLiveLink({
   /** The resolved watch URL; null/undefined renders nothing. */
   url: string | null | undefined;
   size?: "sm" | "default" | "lg";
-  variant?: "default" | "outline" | "secondary" | "ghost";
   className?: string;
   testid?: string;
   /** Accessible name when the surrounding context needs naming ("Watch Court
@@ -41,9 +42,20 @@ export function WatchLiveLink({
       rel="noopener noreferrer"
       data-testid={testid}
       aria-label={label}
-      className={cn(buttonVariants({ size, variant }), className)}
+      className={cn(
+        buttonVariants({ size, variant: "outline" }),
+        "border-destructive/40 bg-destructive/10 font-semibold text-destructive",
+        "hover:border-destructive/60 hover:bg-destructive/20 hover:text-destructive",
+        className,
+      )}
     >
-      <Play aria-hidden="true" className="h-3.5 w-3.5" />
+      <span
+        aria-hidden="true"
+        className="relative flex h-2 w-2 shrink-0"
+      >
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75 motion-reduce:animate-none" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive" />
+      </span>
       {t("Watch live")}
     </a>
   );

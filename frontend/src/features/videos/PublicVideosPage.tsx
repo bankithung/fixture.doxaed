@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Film, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { Film, RotateCcw } from "lucide-react";
 import { videosApi, type TournamentVideo } from "@/api/videos";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/Select";
 import { PublicViewerHeader } from "@/features/live/PublicViewerHeader";
-import { Chip } from "@/features/fixtures/publicTournamentViews";
+import { Chip, FilterFab } from "@/features/fixtures/publicTournamentViews";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { t } from "@/lib/t";
 import { VideoCard } from "./VideoCard";
@@ -272,30 +272,13 @@ export function PublicVideosPage(): React.ReactElement {
         </section>
 
         {isMobile && q.data && q.data.albums.length > 0 ? (
-          <>
-            <div className="h-16" aria-hidden="true" />
-            <div
-              data-testid="videos-bottom-bar"
-              className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur supports-[backdrop-filter]:bg-card/85"
-            >
-              <span className="min-w-0 flex-1 truncate font-tabular text-xs text-muted-foreground">
-                {shownCount} {shownCount === 1 ? t("video") : t("videos")}
-              </span>
-              <Button
-                data-testid="videos-filters-open"
-                className="h-11 shrink-0 px-4 text-sm"
-                onClick={() => setSheetOpen(true)}
-              >
-                <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
-                {t("Filters")}
-                {activeFilters > 0 ? (
-                  <span className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-foreground px-1 font-tabular text-[0.6875rem] font-bold text-primary">
-                    {activeFilters}
-                  </span>
-                ) : null}
-              </Button>
-            </div>
-          </>
+          <FilterFab
+            testid="videos-filters-open"
+            onClick={() => setSheetOpen(true)}
+            label={`${shownCount} ${shownCount === 1 ? t("video") : t("videos")}`}
+            count={activeFilters}
+            icon={Film}
+          />
         ) : null}
 
         <Dialog

@@ -313,7 +313,6 @@ export function MatchCard({
               this opens YouTube instead of the match centre. */}
           <WatchLiveLink
             url={match.watch_url}
-            variant="ghost"
             className="pointer-events-auto relative z-10 h-6 px-1.5 text-[0.6875rem] text-primary hover:bg-primary/10"
             testid={`watch-live-${match.id}`}
             label={t("Watch this match live on YouTube")}

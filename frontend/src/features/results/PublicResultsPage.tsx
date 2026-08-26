@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Printer, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
+import { Download, Printer, RotateCcw, Search, Trophy } from "lucide-react";
 import { tournamentsApi } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,11 @@ import { useBreakpoint } from "@/lib/useBreakpoint";
 import { PublicViewerHeader } from "@/features/live/PublicViewerHeader";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { Chip, Segment } from "@/features/fixtures/publicTournamentViews";
+import {
+  Chip,
+  FilterFab,
+  Segment,
+} from "@/features/fixtures/publicTournamentViews";
 import { ChampionsView } from "./ChampionsView";
 import { medalColumn } from "./MedalChip";
 import { PointsChart } from "./PointsChart";
@@ -53,6 +57,8 @@ import {
 type View = "tally" | "champions" | "students";
 const VIEWS: View[] = ["tally", "champions", "students"];
 
+/** A headline number. Compact on a phone — four 2xl numerals were taking the
+ * whole first screen before a single result was visible (owner 2026-08-26). */
 function Stat({
   value,
   label,
@@ -63,11 +69,17 @@ function Stat({
   hint?: string;
 }): React.ReactElement {
   return (
-    <div className="flex flex-col">
-      <span className="font-tabular text-2xl font-semibold">{value}</span>
-      <span className="text-xs text-muted-foreground">{label}</span>
+    <div className="flex items-baseline gap-1.5 sm:flex-col sm:items-start sm:gap-0">
+      <span className="font-tabular text-base font-semibold sm:text-2xl">
+        {value}
+      </span>
+      <span className="text-[0.6875rem] text-muted-foreground sm:text-xs">
+        {label}
+      </span>
       {hint ? (
-        <span className="text-[0.6875rem] text-muted-foreground/80">{hint}</span>
+        <span className="hidden text-[0.6875rem] text-muted-foreground/80 sm:block">
+          {hint}
+        </span>
       ) : null}
     </div>
   );
@@ -366,7 +378,7 @@ export function PublicResultsPage(): React.ReactElement {
           <>
             <div
               data-testid="results-summary"
-              className="grid grid-cols-2 gap-3 border-y border-border py-3 sm:flex sm:flex-wrap sm:items-center sm:gap-x-8 sm:gap-y-3"
+              className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-y border-border py-2 sm:gap-x-8 sm:gap-y-3 sm:py-3"
             >
               <Stat value={q.data.totals.medals} label={t("Medals awarded")} />
               <Stat value={q.data.totals.points} label={t("Points awarded")} />
@@ -379,7 +391,7 @@ export function PublicResultsPage(): React.ReactElement {
                 label={t("Students")}
                 hint={`${multiEventCount(q.data.students)} ${t("in more than one event")}`}
               />
-              <div className="col-span-2 flex flex-wrap items-center gap-2 sm:ml-auto">
+              <div className="flex w-full flex-wrap items-center gap-1.5 sm:ml-auto sm:w-auto sm:gap-2">
                 {ladder.map((l) => (
                   <span
                     key={l.place}
@@ -557,37 +569,17 @@ export function PublicResultsPage(): React.ReactElement {
         )}
        </section>
 
-      {/* Mobile: one thumb-reachable door to every filter, the way the match
-          board does it. It states the count so the drawer is only opened on
-          purpose. */}
+      {/* The match centre's floating pill, on every board (owner 2026-08-26).
+          A full-width bar walled off the bottom edge and covered the last row
+          of the sheet. */}
       {isMobile && q.data && view !== "champions" ? (
-        <>
-          <div className="h-16 print:hidden" aria-hidden="true" />
-          <div
-            data-testid="results-bottom-bar"
-            className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur print:hidden supports-[backdrop-filter]:bg-card/85"
-          >
-            <span className="min-w-0 flex-1 truncate font-tabular text-xs text-muted-foreground">
-              {rowCount}
-            </span>
-            <Button
-              data-testid="results-filters-open"
-              className="h-11 shrink-0 px-4 text-sm"
-              onClick={() => setSheetOpen(true)}
-            >
-              <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
-              {t("Filters")}
-              {activeFilters > 0 ? (
-                <span
-                  data-testid="results-filter-count"
-                  className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-foreground px-1 font-tabular text-[0.6875rem] font-bold text-primary"
-                >
-                  {activeFilters}
-                </span>
-              ) : null}
-            </Button>
-          </div>
-        </>
+        <FilterFab
+          testid="results-filters-open"
+          onClick={() => setSheetOpen(true)}
+          label={rowCount}
+          count={activeFilters}
+          icon={Trophy}
+        />
       ) : null}
 
       <Dialog

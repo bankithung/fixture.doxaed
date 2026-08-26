@@ -21,6 +21,7 @@ SETTING_FIELDS = (
     "category_limits",
     "story_categories",
     "story_photos_per_entry",
+    "publish_on_upload",
 )
 
 
@@ -83,6 +84,11 @@ def _clean_settings(changes: dict) -> dict:
                     raise DRFValidationError({"detail": "invalid_category_limits"})
                 cleaned[cat.strip()[:100]] = limit
             value = cleaned
+        elif key == "publish_on_upload":
+            # A moderation MODE, so it is a boolean and nothing else: a truthy
+            # string would silently turn approve-first off.
+            if not isinstance(value, bool):
+                raise DRFValidationError({"detail": "invalid_publish_on_upload"})
         else:
             if not isinstance(value, str):
                 raise DRFValidationError({"detail": f"invalid_{key}"})

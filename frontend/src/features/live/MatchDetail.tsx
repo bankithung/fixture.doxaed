@@ -290,12 +290,35 @@ function EventList({
       : teamId && teamId === match.away_team?.id
         ? "away"
         : null;
+
+  /* The score AFTER each event, per period. A tap-scored set sport writes one
+     "Point" per rally with no player and no minute, so the timeline read
+     "Point / Point / Point" and said nothing at all (owner 2026-08-26). The
+     running score is the thing those rows are actually for. */
+  const running = new Map<number, string>();
+  {
+    let h = 0;
+    let a = 0;
+    let period: string | null = null;
+    for (const e of [...events].sort((x, y) => x.sequence_no - y.sequence_no)) {
+      if (e.period !== period) {
+        h = 0;
+        a = 0;
+        period = e.period;
+      }
+      const s = sideOf(e.team_id);
+      if (s === "home") h += 1;
+      else if (s === "away") a += 1;
+      if (s) running.set(e.sequence_no, `${h}-${a}`);
+    }
+  }
   return (
     <ol className="flex flex-col">
       {rows.map((e, i) => {
         const marker =
           limit == null && e.period && (i === 0 || rows[i - 1].period !== e.period);
         const side = sideOf(e.team_id);
+        const score = running.get(e.sequence_no);
         return (
           <Fragment key={e.sequence_no}>
             {marker ? (
@@ -327,6 +350,12 @@ function EventList({
                   {e.player ? (
                     <span className="text-muted-foreground"> · {e.player}</span>
                   ) : null}
+                  {!e.player && score ? (
+                    <span className="font-tabular text-muted-foreground">
+                      {" · "}
+                      {score}
+                    </span>
+                  ) : null}
                 </p>
                 {e.related_player ? (
                   <p className="text-xs text-muted-foreground">
@@ -337,8 +366,8 @@ function EventList({
               {side ? (
                 <span className="shrink-0 pt-px text-xs text-muted-foreground">
                   {side === "home"
-                    ? (match.home_team?.short_name ?? "")
-                    : (match.away_team?.short_name ?? "")}
+                    ? match.home_team?.short_name || match.home_team?.name || ""
+                    : match.away_team?.short_name || match.away_team?.name || ""}
                 </span>
               ) : null}
             </li>
@@ -602,9 +631,13 @@ export function MatchScoreline({
         </span>
       </div>
 
+      {/* On a phone each side gets its OWN line with the score between them:
+          three columns squeezed "CHRISTIAN HIGHER SECONDARY SCHOOL TT-1" into
+          a few characters (owner 2026-08-26). From `sm` it is the classic
+          three-column board again. */}
       <div
         aria-live="polite"
-        className="grid grid-cols-[1fr_auto_1fr] items-center gap-3"
+        className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 sm:grid-cols-[1fr_auto_1fr]"
       >
         {/* The headline: a full-size badge against each side of the score,
             which stays centred and tabular between them. */}
@@ -612,13 +645,14 @@ export function MatchScoreline({
           team={match.home_team}
           tournament={tournament}
           crestSize={dense ? "sm" : "lg"}
-          crestSide="end"
+          crestSide="start"
           className={cn(
-            "min-w-0 truncate text-right font-semibold",
-            dense ? "text-sm sm:text-base" : "text-base sm:text-lg",
+            "min-w-0 font-semibold sm:justify-end sm:text-right",
+            "[&>span]:whitespace-normal [&>span]:break-words sm:[&>span]:truncate",
+            dense ? "text-sm sm:text-base" : "text-sm sm:text-lg",
           )}
         />
-        <div className="text-center">
+        <div className="row-span-2 text-center sm:row-span-1">
           <div
             className={cn(
               "font-tabular font-semibold tabular-nums",
@@ -657,8 +691,9 @@ export function MatchScoreline({
           crestSize={dense ? "sm" : "lg"}
           crestSide="start"
           className={cn(
-            "min-w-0 truncate text-left font-semibold",
-            dense ? "text-sm sm:text-base" : "text-base sm:text-lg",
+            "min-w-0 text-left font-semibold",
+            "[&>span]:whitespace-normal [&>span]:break-words sm:[&>span]:truncate",
+            dense ? "text-sm sm:text-base" : "text-sm sm:text-lg",
           )}
         />
       </div>

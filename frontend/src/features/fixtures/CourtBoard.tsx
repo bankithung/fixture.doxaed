@@ -128,7 +128,6 @@ function Lane({
         <span className="ml-auto flex shrink-0 items-center gap-3">
           <WatchLiveLink
             url={lane.link?.is_streaming ? lane.link.watch_url : null}
-            variant="ghost"
             className="h-6 px-1.5 text-[0.6875rem] text-primary hover:bg-primary/10"
             testid={`watch-court-${lane.name}`}
             label={`${t("Watch live")} ${lane.name}`}

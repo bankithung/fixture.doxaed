@@ -675,6 +675,7 @@ def _own_photo_payload(p: LensPhoto) -> dict:
         "url": _media_url(p.image.name),
         "thumb_url": _media_url(p.thumb.name),
         "caption": p.caption,
+        "photographer": p.photographer,
         "category": p.category,
         "story_id": str(p.story_id) if p.story_id else None,
         "position": p.position,
@@ -702,6 +703,7 @@ def _story_payload(s, *, own: bool = False) -> dict:
                 "url": _media_url(ph.image.name),
                 "thumb_url": _media_url(ph.thumb.name),
                 "caption": ph.caption,
+                "photographer": ph.photographer,
                 "position": ph.position,
                 # A frame can hold a prize of its own. Without this the award a
                 # host declared on a photo INSIDE a story was invisible
@@ -783,6 +785,7 @@ class LensPassPhotosView(GenericAPIView):
             file=request.FILES.get("file"),
             caption=str(request.data.get("caption") or ""),
             category=str(request.data.get("category") or ""),
+            photographer=str(request.data.get("photographer") or ""),
             event_id=_event_id(request),
         )
         return Response({"photo": _own_photo_payload(photo)}, status=201)
@@ -906,6 +909,7 @@ class PublicTournamentAlbumView(GenericAPIView):
                 "thumb_url": _media_url(p.thumb.name),
                 "institution_name": p.institution.name,
                 "caption": p.caption,
+                "photographer": p.photographer,
                 "category": p.category,
                 "award_category": p.award_category,
                 "created_at": p.created_at.isoformat(),

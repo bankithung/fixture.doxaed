@@ -73,7 +73,10 @@ export function LensCampaignListPage(): React.ReactElement {
   });
 
   return (
-    <div className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+    /* ONE section: heading, the new-campaign action and the list itself live
+       in the same panel (owner 2026-08-26). */
+    <div className="flex w-full flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+      <section className="flex w-full flex-col gap-4 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-5">
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0">
           <h1 className="page-title">{t("Guest Lens")}</h1>
@@ -95,7 +98,7 @@ export function LensCampaignListPage(): React.ReactElement {
 
       {!fixturesReady ? (
         <p
-          className="rounded-xl border border-dashed border-border bg-card px-4 py-3 text-xs text-muted-foreground"
+          className="rounded-lg border border-dashed border-border px-4 py-3 text-xs text-muted-foreground"
           data-testid="fixtures-hint"
         >
           {t("Generate the fixtures first. Campaigns open once the schedule exists.")}
@@ -103,9 +106,9 @@ export function LensCampaignListPage(): React.ReactElement {
       ) : null}
 
       {listQ.isLoading ? (
-        <div className="h-40 animate-pulse rounded-xl border border-border bg-card" />
+        <div className="h-40 animate-pulse rounded-lg bg-muted/40" />
       ) : campaigns.length === 0 ? (
-        <section className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center">
+        <section className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border px-6 py-12 text-center">
           <Camera aria-hidden="true" className="h-6 w-6 text-muted-foreground" />
           <p className="text-sm font-medium">{t("No photo campaigns yet")}</p>
           <p className="max-w-sm text-sm text-muted-foreground">
@@ -218,6 +221,7 @@ export function LensCampaignListPage(): React.ReactElement {
           </DialogFooter>
         </Dialog>
       ) : null}
+      </section>
     </div>
   );
 }

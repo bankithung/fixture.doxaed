@@ -4,10 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Award,
   Camera,
+  SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
   ScanLine,
-  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { lensApi, type PublicAlbumPhoto } from "@/api/lens";
@@ -16,6 +16,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/Select";
 import { ShareButton } from "@/features/live/ShareButton";
 import { ThemeToggle } from "@/features/theme/ThemeToggle";
+import { FilterFab } from "@/features/fixtures/publicTournamentViews";
 import { InfiniteWall } from "./InfiniteWall";
 import { QrScanDialog } from "./QrScanDialog";
 import { qk } from "@/lib/queryKeys";
@@ -549,34 +550,14 @@ export function AlbumPanel({
           )}
         </section>
 
-      {/* Mobile: one door to the filters, thumb-reachable, stating what is on
-          screen so the drawer is only opened on purpose. */}
       {isMobile && campaign ? (
-        <>
-          <div className="h-16" aria-hidden="true" />
-          <div
-            data-testid="album-bottom-bar"
-            className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur supports-[backdrop-filter]:bg-card/85"
-          >
-            <span className="min-w-0 flex-1 truncate font-tabular text-xs text-muted-foreground">
-              {category ? countIn(category) : total}{" "}
-              {t("photos")}
-            </span>
-            <Button
-              data-testid="album-filters-open"
-              className="h-11 shrink-0 px-4 text-sm"
-              onClick={() => setSheetOpen(true)}
-            >
-              <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
-              {t("Filters")}
-              {activeFilters > 0 ? (
-                <span className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-foreground px-1 font-tabular text-[0.6875rem] font-bold text-primary">
-                  {activeFilters}
-                </span>
-              ) : null}
-            </Button>
-          </div>
-        </>
+        <FilterFab
+          testid="album-filters-open"
+          onClick={() => setSheetOpen(true)}
+          label={category || t("All categories")}
+          count={activeFilters}
+          icon={Camera}
+        />
       ) : null}
 
       <Dialog

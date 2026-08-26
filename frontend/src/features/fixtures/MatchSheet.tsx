@@ -427,7 +427,6 @@ export function MatchSheet({
                     {/* A finished match has nothing to watch live. */}
                     <WatchLiveLink
                       url={live ? m.watch_url : null}
-                      variant="ghost"
                       className="pointer-events-auto relative z-10 h-6 px-1.5 text-[0.78em] text-primary hover:bg-primary/10"
                       testid={`watch-live-${m.id}`}
                       label={t("Watch this match live on YouTube")}

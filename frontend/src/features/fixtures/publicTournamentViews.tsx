@@ -116,10 +116,12 @@ export function GroupTable({
       : [r.P, r.W, r.D, r.L, r.GD, r.Pts];
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      {/* Fluid type: a phone gets a table it can read in one line per team, a
+          desk gets a bigger one, from the same rule (owner 2026-08-26). */}
+      <table className="w-full text-[clamp(0.72rem,0.64rem+0.26vw,0.9rem)]">
         <thead>
           <tr className="border-b border-border bg-muted/40 text-left text-[0.625rem] uppercase tracking-wide text-muted-foreground">
-            <th className="px-4 py-2 font-semibold">{t("Team")}</th>
+            <th className="px-2 py-1.5 sm:px-4 sm:py-2 font-semibold">{t("Team")}</th>
             {heads.map((h) => (
               <th key={h} className="px-2 py-2 text-right font-semibold">
                 {h}
@@ -251,5 +253,48 @@ export function Chip({
         <span className="font-tabular text-[0.625rem] opacity-70">{count}</span>
       ) : null}
     </button>
+  );
+}
+
+/**
+ * The phone's floating FILTER button.
+ *
+ * The match centre's pill is the one every other public board should wear
+ * (owner 2026-08-26): it floats clear of the content instead of walling off
+ * the bottom edge, it carries what you are looking at as its own label, and it
+ * is thumb-reachable from anywhere on the page. A full-width bar did none of
+ * that and covered the last row of every table.
+ */
+export function FilterFab({
+  label,
+  onClick,
+  testid,
+  count,
+  icon: Icon,
+}: {
+  /** What is on screen right now — the button answers "what am I looking at"
+   * as much as it opens the picker. */
+  label: string;
+  onClick: () => void;
+  testid: string;
+  /** Active filters, shown as a badge when there are any. */
+  count?: number;
+  icon?: React.ComponentType<{ className?: string }>;
+}): React.ReactElement {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-4 print:hidden">
+      <button
+        type="button"
+        data-testid={testid}
+        onClick={onClick}
+        className="pointer-events-auto inline-flex h-11 max-w-full items-center gap-2 rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground shadow-lg hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {Icon ? <Icon className="h-4 w-4 shrink-0" /> : null}
+        <span className="min-w-0 truncate">{label}</span>
+        <span className="shrink-0 rounded-full bg-primary-foreground/20 px-2 py-0.5 font-tabular text-[0.6875rem]">
+          {count ? `${t("Filter")} ${count}` : t("Filter")}
+        </span>
+      </button>
+    </div>
   );
 }

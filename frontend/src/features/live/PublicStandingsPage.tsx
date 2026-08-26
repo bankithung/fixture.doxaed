@@ -103,7 +103,16 @@ export function PublicStandingsPage(): React.ReactElement {
         active="standings"
         connected={connected}
       />
-      <main className="flex w-full min-w-0 flex-1 flex-col gap-6 px-3 py-4 sm:gap-8 sm:px-6 sm:py-6 lg:px-8">
+      <main className="flex w-full min-w-0 flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+       <section className="flex w-full min-w-0 flex-col gap-4 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-5">
+        <header className="min-w-0">
+          <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
+            {t("Standings")}
+          </h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {t("Group tables, competition by competition")}
+          </p>
+        </header>
         {loading ? (
           <div aria-busy="true" className="h-48 animate-pulse rounded-xl bg-muted/40" />
         ) : scheduleQ.isError ? (
@@ -128,7 +137,7 @@ export function PublicStandingsPage(): React.ReactElement {
             <div
               role="tablist"
               aria-label={t("Sports")}
-              className="flex flex-wrap items-end gap-1 overflow-x-auto px-2"
+              className="flex flex-wrap items-center gap-1.5 print:hidden"
             >
               <Bookmark
                 testid="standings-sport-all"
@@ -187,12 +196,12 @@ export function PublicStandingsPage(): React.ReactElement {
                     <div
                       key={c.key}
                       data-testid={`standings-comp-${c.key}`}
-                      className="flex flex-col overflow-hidden rounded-xl border border-border"
+                      className="flex flex-col overflow-hidden rounded-lg border border-border"
                     >
                       {/* Each category is its OWN titled block: a real
                           heading on a tinted band, not tiny chips. */}
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-muted/60 px-4 py-2.5">
-                        <h3 className="text-sm font-semibold">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-muted/60 px-3 py-2 sm:px-4 sm:py-2.5">
+                        <h3 className="text-[0.8125rem] font-semibold sm:text-sm">
                           {splitLabel(c.label).slice(1).join(" · ") || c.label}
                         </h3>
                         <span className="font-tabular text-xs text-muted-foreground">
@@ -200,7 +209,7 @@ export function PublicStandingsPage(): React.ReactElement {
                           {c.groups.length === 1 ? t("group") : t("groups")}
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 items-start gap-x-6 gap-y-5 p-4 xl:grid-cols-2">
+                      <div className="grid grid-cols-1 items-start gap-x-6 gap-y-4 p-2 sm:gap-y-5 sm:p-4 xl:grid-cols-2">
                         {c.groups.map((g) => (
                           <div key={g.key} className="flex flex-col">
                             <h4 className="pb-1 text-xs font-semibold uppercase tracking-wide text-primary">
@@ -222,6 +231,7 @@ export function PublicStandingsPage(): React.ReactElement {
             </div>
           </div>
         )}
+       </section>
       </main>
     </div>
   );

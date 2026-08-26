@@ -90,6 +90,12 @@ class LensCampaign(models.Model):
     # How many photographs one story entry holds (the competition's "four
     # photographs arranged in the intended order").
     story_photos_per_entry = models.PositiveSmallIntegerField(default=4)
+    #: Publish on upload instead of holding every photo for approval.
+    #: The ANPSA photo competition promises schools that their entries appear
+    #: in the gallery immediately and that organisers REMOVE what does not
+    #: comply (owner 2026-08-26) — the opposite of approve-first, so it is a
+    #: campaign switch rather than a change to how moderation works.
+    publish_on_upload = models.BooleanField(default=False)
     opened_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
@@ -254,6 +260,9 @@ class LensPhoto(models.Model):
     width = models.PositiveIntegerField(default=0)
     height = models.PositiveIntegerField(default=0)
     caption = models.CharField(max_length=200, blank=True)
+    #: Who took it. The competition rules require a photographer's name on
+    #: every submission, and it is not always the person holding the pass.
+    photographer = models.CharField(max_length=120, blank=True, default="")
     # The campaign category the uploader filed this photo under ("" = none;
     # photos from before categories became upload buckets stay blank).
     category = models.CharField(max_length=100, blank=True)

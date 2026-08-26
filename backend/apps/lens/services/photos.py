@@ -68,7 +68,9 @@ def _reencode(uploaded_file):
     return buf.getvalue(), tbuf.getvalue(), main.width, main.height
 
 
-def add_photo(*, pass_, file, caption="", category="", event_id=None):
+def add_photo(
+    *, pass_, file, caption="", category="", photographer="", event_id=None,
+):
     """Public upload through a pass. Quota is a live COUNT of the institution's
     rows (any status) under ``select_for_update`` on the pass row (spec D10);
     a category with a ``category_limits`` entry gets the same live-count check
@@ -142,9 +144,15 @@ def add_photo(*, pass_, file, caption="", category="", event_id=None):
             width=width,
             height=height,
             caption=(caption or "").strip()[:200],
+            photographer=(photographer or "").strip()[:120],
             category=category,
             event_id=event_id,
         )
+        # A campaign that publishes on upload approves as it stores: the
+        # school is told its entry is in the gallery, so it must actually be
+        # there before the organisers get to it (owner 2026-08-26).
+        if campaign.publish_on_upload:
+            photo.approved_at = timezone.now()
         photo.image.save("photo.jpg", ContentFile(image_bytes), save=False)
         photo.thumb.save("thumb.jpg", ContentFile(thumb_bytes), save=False)
         photo.save()

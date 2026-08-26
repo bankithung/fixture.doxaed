@@ -67,6 +67,9 @@ def story_for_upload(*, pass_: LensPass, campaign, category: str) -> LensStory:
             institution=pass_.institution,
             access_pass=pass_,
             category=category,
+            # Publish-on-upload applies to the ENTRY too: a story whose frames
+            # are public but whose story row is not would show nowhere.
+            approved_at=timezone.now() if campaign.publish_on_upload else None,
         )
     except Exception:
         # Lost a create race against another tab of the same school: the

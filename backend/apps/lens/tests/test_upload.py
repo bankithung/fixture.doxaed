@@ -258,3 +258,33 @@ def test_pass_context_payload():
     }
     assert body["photos"][0]["status"] == "pending"
     assert body["photos"][0]["category"] == "Best Action Shot"
+
+
+def test_publish_on_upload_puts_a_photo_in_the_gallery_at_once():
+    """The ANPSA photo competition tells schools their entry appears in the
+    gallery immediately and that organisers REMOVE what does not comply (owner
+    2026-08-26) — the opposite of approve-first, so it is a campaign switch."""
+    from apps.lens.services import photos as photo_service
+
+    admin, t, _ = setup_tournament()
+    campaign = open_campaign(t, admin, publish_on_upload=True)
+    pass_, _token = mint_token(campaign, admin)
+
+    photo = photo_service.add_photo(
+        pass_=pass_, file=jpeg_file(), photographer="R. Ao",
+    )
+    assert photo.approved_at is not None
+    assert photo.status == "approved"
+    assert photo.photographer == "R. Ao"
+
+
+def test_without_the_switch_a_photo_still_waits_for_approval():
+    from apps.lens.services import photos as photo_service
+
+    admin, t, _ = setup_tournament()
+    campaign = open_campaign(t, admin)
+    pass_, _token = mint_token(campaign, admin)
+
+    photo = photo_service.add_photo(pass_=pass_, file=jpeg_file())
+    assert photo.approved_at is None
+    assert photo.status == "pending"

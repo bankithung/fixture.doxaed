@@ -52,7 +52,7 @@ export function TallyGrid({
     <div className="-mx-3 overflow-x-auto sm:mx-0">
       <table
         data-testid="tally-grid"
-        className="w-full min-w-[52rem] border-separate border-spacing-0 text-sm"
+        className="w-full min-w-[52rem] border-separate border-spacing-0 text-[clamp(0.7rem,0.62rem+0.28vw,0.95rem)]"
       >
         <caption className="sr-only">
           {t(

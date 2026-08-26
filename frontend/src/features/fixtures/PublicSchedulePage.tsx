@@ -1378,7 +1378,12 @@ function PublicScheduleInner(): React.ReactElement {
         <MatchDrawer
           matchId={openId}
           matchNo={numbers.get(openId)}
-          watchUrl={openMatch?.watch_url}
+          // A finished match has nothing left to watch live (owner 2026-08-26).
+          watchUrl={
+            openMatch && LIVE_STATUSES.has(openMatch.status)
+              ? openMatch.watch_url
+              : null
+          }
           tab={params.get("tab") ?? "overview"}
           onTab={(key) => setParam({ tab: key === "overview" ? null : key })}
           onClose={() => setParam({ match: null, tab: null })}

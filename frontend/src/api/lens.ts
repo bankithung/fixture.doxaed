@@ -145,6 +145,8 @@ export interface LensOwnPhoto {
   url: string;
   thumb_url: string;
   caption: string;
+  /** Who took it (the competition rules require a name). */
+  photographer?: string;
   category: string;
   /** Set when the photo belongs to one of the school's photo stories. */
   story_id: string | null;
@@ -160,6 +162,7 @@ export interface LensStoryFrame {
   url: string;
   thumb_url: string;
   caption: string;
+  photographer?: string;
   position: number;
   /** A frame can win a prize of its own, independently of its story. */
   award_category?: string;
@@ -217,6 +220,8 @@ export interface PublicAlbumPhoto {
   thumb_url: string;
   institution_name: string;
   caption: string;
+  /** Who took it (the competition rules require a name). */
+  photographer?: string;
   category: string;
   award_category: string;
   created_at: string;

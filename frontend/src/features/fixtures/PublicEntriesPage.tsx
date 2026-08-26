@@ -6,8 +6,8 @@ import {
   Download,
   Printer,
   RotateCcw,
+  School,
   Search,
-  SlidersHorizontal,
 } from "lucide-react";
 import { tournamentsApi, type PublicEntryInstitution } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import { PublicViewerHeader } from "@/features/live/PublicViewerHeader";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { Chip } from "./publicTournamentViews";
+import { Chip, FilterFab } from "./publicTournamentViews";
 import {
   buildBands,
   buildColumns,
@@ -422,7 +422,7 @@ export function PublicEntriesPage(): React.ReactElement {
                 <div className="-mx-3 overflow-x-auto sm:mx-0">
                   <table
                     data-testid="entries-matrix"
-                    className="w-full min-w-[46rem] border-separate border-spacing-0 text-sm"
+                    className="w-full min-w-[46rem] border-separate border-spacing-0 text-[clamp(0.7rem,0.62rem+0.28vw,0.95rem)]"
                   >
                     <caption className="sr-only">
                       {t(
@@ -608,35 +608,14 @@ export function PublicEntriesPage(): React.ReactElement {
           )}
         </section>
 
-      {/* Mobile: one thumb-reachable door to every filter. */}
       {isMobile && q.data && allRows.length > 0 ? (
-        <>
-          <div className="h-16 print:hidden" aria-hidden="true" />
-          <div
-            data-testid="entries-bottom-bar"
-            className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur print:hidden supports-[backdrop-filter]:bg-card/85"
-          >
-            <span
-              className="min-w-0 flex-1 truncate font-tabular text-xs text-muted-foreground"
-              data-testid="entries-row-count"
-            >
-              {rows.length} {rows.length === 1 ? t("school") : t("schools")}
-            </span>
-            <Button
-              data-testid="entries-filters-open"
-              className="h-11 shrink-0 px-4 text-sm"
-              onClick={() => setSheetOpen(true)}
-            >
-              <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
-              {t("Filters")}
-              {activeFilters > 0 ? (
-                <span className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-foreground px-1 font-tabular text-[0.6875rem] font-bold text-primary">
-                  {activeFilters}
-                </span>
-              ) : null}
-            </Button>
-          </div>
-        </>
+        <FilterFab
+          testid="entries-filters-open"
+          onClick={() => setSheetOpen(true)}
+          label={`${rows.length} ${rows.length === 1 ? t("school") : t("schools")}`}
+          count={activeFilters}
+          icon={School}
+        />
       ) : null}
 
       <Dialog
