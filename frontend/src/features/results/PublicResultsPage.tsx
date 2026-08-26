@@ -312,7 +312,7 @@ export function PublicResultsPage(): React.ReactElement {
       {/* ONE section (owner 2026-08-25). The heading, the totals, the view
           switcher, the filters and the sheet itself are one board: read across
           four floating cards, a medal tally is four things rather than one. */}
-      <main className="flex w-full flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+      <main className="flex w-full max-w-full overflow-x-clip min-w-0 flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
        <section className="flex w-full min-w-0 flex-col gap-4 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-5">
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>

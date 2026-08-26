@@ -102,7 +102,7 @@ export function StudentsView({
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="min-w-0 overflow-x-auto">
       <table
         className="w-full min-w-[48rem] border-separate border-spacing-0 text-sm"
         data-testid="students-table"

@@ -308,3 +308,94 @@ class LensPhoto(models.Model):
         if self.approved_at is not None:
             return "approved"
         return "pending"
+
+
+class LensJudge(models.Model):
+    """An appointed judge, reachable by a link rather than an account.
+
+    The competition's panel is named by the organisers and is usually not made
+    of platform users — photographers and teachers invited for the day. They
+    get the same kind of credential a school gets: one signed link, no sign-up.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="lens_judges",
+    )
+    campaign = models.ForeignKey(
+        LensCampaign, on_delete=models.CASCADE, related_name="judges",
+    )
+    name = models.CharField(max_length=120)
+    email = models.EmailField(blank=True, default="")
+    token_hash = models.CharField(max_length=128, db_index=True, blank=True)
+    token_encrypted = models.TextField(blank=True, default="")
+    minted_at = models.DateTimeField(null=True, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+        indexes = [
+            models.Index(fields=["campaign", "revoked_at"], name="lens_judge_live_idx"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return self.name
+
+
+class LensScore(models.Model):
+    """One judge's sheet for one entry.
+
+    An entry is a PHOTO or a STORY, never both, and a story is scored once as a
+    whole — the four photographs are one entry, which is what the rules say and
+    what the unique constraints enforce.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization", on_delete=models.CASCADE,
+        related_name="lens_scores",
+    )
+    campaign = models.ForeignKey(
+        LensCampaign, on_delete=models.CASCADE, related_name="scores",
+    )
+    judge = models.ForeignKey(
+        LensJudge, on_delete=models.CASCADE, related_name="scores",
+    )
+    photo = models.ForeignKey(
+        LensPhoto, null=True, blank=True, on_delete=models.CASCADE,
+        related_name="scores",
+    )
+    story = models.ForeignKey(
+        LensStory, null=True, blank=True, on_delete=models.CASCADE,
+        related_name="scores",
+    )
+    #: {criterion key: marks}, only keys the rubric names.
+    marks = models.JSONField(default=dict, blank=True)
+    #: Stored, not derived on read: a rubric edited later must not silently
+    #: restate what a judge awarded.
+    total = models.PositiveSmallIntegerField(default=0)
+    note = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["judge", "photo"], name="uniq_lens_score_judge_photo",
+                condition=models.Q(photo__isnull=False),
+            ),
+            models.UniqueConstraint(
+                fields=["judge", "story"], name="uniq_lens_score_judge_story",
+                condition=models.Q(story__isnull=False),
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.judge_id}:{self.total}"

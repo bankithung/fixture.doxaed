@@ -115,7 +115,7 @@ export function GroupTable({
       ? [r.P, r.W, r.L, `${r.GF}-${r.GA}`, r.PD_pts ?? 0, r.Pts]
       : [r.P, r.W, r.D, r.L, r.GD, r.Pts];
   return (
-    <div className="overflow-x-auto">
+    <div className="min-w-0 overflow-x-auto">
       {/* Fluid type: a phone gets a table it can read in one line per team, a
           desk gets a bigger one, from the same rule (owner 2026-08-26). */}
       <table className="w-full text-[clamp(0.72rem,0.64rem+0.26vw,0.9rem)]">
@@ -287,7 +287,7 @@ export function FilterFab({
         type="button"
         data-testid={testid}
         onClick={onClick}
-        className="pointer-events-auto inline-flex h-11 max-w-full items-center gap-2 rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground shadow-lg hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="pointer-events-auto inline-flex h-11 max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full bg-primary px-4 sm:px-5 text-sm font-medium text-primary-foreground shadow-lg hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {Icon ? <Icon className="h-4 w-4 shrink-0" /> : null}
         <span className="min-w-0 truncate">{label}</span>

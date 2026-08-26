@@ -168,7 +168,7 @@ export function PublicVideosPage(): React.ReactElement {
         active="videos"
         connected={false}
       />
-      <main className="flex w-full flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+      <main className="flex w-full max-w-full overflow-x-clip min-w-0 flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
         <section className="flex w-full min-w-0 flex-col gap-4 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-5">
           <header className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">

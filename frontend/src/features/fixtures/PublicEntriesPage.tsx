@@ -291,7 +291,7 @@ export function PublicEntriesPage(): React.ReactElement {
         active="entries"
         connected={false}
       />
-      <main className="flex w-full flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+      <main className="flex w-full max-w-full overflow-x-clip min-w-0 flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
         {/* ONE section: heading, totals, filters and the sheet are one board. */}
         <section className="flex w-full flex-col gap-4 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-5">
           <header className="flex flex-wrap items-start justify-between gap-3">
@@ -419,7 +419,7 @@ export function PublicEntriesPage(): React.ReactElement {
                 /* A matrix stays a matrix on a phone: it scrolls sideways with
                    the school column pinned, because collapsing it to cards
                    would destroy the one thing a grid is for. */
-                <div className="-mx-3 overflow-x-auto sm:mx-0">
+                <div className="min-w-0 -mx-3 overflow-x-auto sm:mx-0">
                   <table
                     data-testid="entries-matrix"
                     className="w-full min-w-[46rem] border-separate border-spacing-0 text-[clamp(0.7rem,0.62rem+0.28vw,0.95rem)]"

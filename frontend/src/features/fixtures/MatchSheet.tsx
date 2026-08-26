@@ -250,7 +250,7 @@ export function MatchSheet({
     // The sheet keeps its columns at every width: below the point where they
     // stop fitting it scrolls sideways rather than collapsing into cards, so
     // it is still a sheet on a phone.
-    <div className="overflow-x-auto">
+    <div className="min-w-0 overflow-x-auto">
       <table
         data-testid={`${idScope}-table`}
         className={cn(

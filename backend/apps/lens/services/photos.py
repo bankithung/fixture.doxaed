@@ -161,6 +161,23 @@ def add_photo(
     return photo
 
 
+def owner_may_edit(entry, campaign) -> bool:
+    """Can the school that uploaded this still change it?
+
+    The lock exists so a school cannot rewrite what a host has MODERATED. Under
+    ``publish_on_upload`` nothing is moderated on the way in — "approved" means
+    published, not reviewed — so the school keeps its entry until the
+    organisers actually touch it. Without this a story could never be given the
+    title the competition requires, because it was approved the instant it was
+    created (owner 2026-08-26).
+    """
+    if entry.hidden_at is not None:
+        return False
+    if entry.approved_at is None:
+        return True
+    return bool(getattr(campaign, "publish_on_upload", False))
+
+
 def remove_own_photo(*, pass_, upload_ref):
     """Teacher deletes their own PENDING photo (frees quota). Approved or
     hidden photos are locked (the host owns moderated content)."""
@@ -171,7 +188,7 @@ def remove_own_photo(*, pass_, upload_ref):
     ).first()
     if photo is None:
         raise NotFound("photo_not_found")
-    if photo.status != "pending":
+    if not owner_may_edit(photo, photo.campaign):
         raise DRFValidationError({"detail": "photo_locked"})
     story = photo.story
     photo.image.delete(save=False)
@@ -191,7 +208,7 @@ def edit_own_caption(*, pass_, upload_ref, caption: str):
     ).first()
     if photo is None:
         raise NotFound("photo_not_found")
-    if photo.status != "pending":
+    if not owner_may_edit(photo, photo.campaign):
         raise DRFValidationError({"detail": "photo_locked"})
     photo.caption = (caption or "").strip()[:200]
     photo.save(update_fields=["caption"])

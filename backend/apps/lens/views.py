@@ -123,6 +123,20 @@ def _get_managed_tournament(request, tournament_id) -> Tournament:
     return tournament
 
 
+def _manager_campaign_or_404(request, campaign_id):
+    """A campaign the caller may manage. 404 on no access (invariant 2), 403
+    on an accessible tournament the caller does not manage."""
+    campaign = (
+        LensCampaign.objects.filter(id=campaign_id)
+        .select_related("tournament", "organization")
+        .first()
+    )
+    if campaign is None:
+        raise NotFound("campaign_not_found")
+    _get_managed_tournament(request, campaign.tournament_id)
+    return campaign
+
+
 def _campaign_qs(tournament):
     return LensCampaign.objects.filter(tournament=tournament).order_by("created_at")
 
@@ -950,3 +964,123 @@ class PublicTournamentAlbumView(GenericAPIView):
                 "schools": len(by_inst),
             },
         })
+
+
+# ---------------------------------------------------------------- judging ---
+
+class LensJudgesView(GenericAPIView):
+    """`GET/POST /api/lens/campaigns/{campaign_id}/judges/` — the panel.
+
+    Manager-only: appointing a judge mints a link that scores entries, so it is
+    the same authority as awarding a prize.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, campaign_id):
+        from apps.lens.services import judging
+
+        campaign = _manager_campaign_or_404(request, campaign_id)
+        judges = campaign.judges.all().order_by("name")
+        return Response({
+            "judges": [
+                {
+                    "id": str(j.id),
+                    "name": j.name,
+                    "email": j.email,
+                    "revoked": bool(j.revoked_at),
+                    "last_seen_at": j.last_seen_at.isoformat() if j.last_seen_at else None,
+                    "scored": j.scores.count(),
+                }
+                for j in judges
+            ],
+            "entries": len(judging.entries(campaign)),
+        })
+
+    def post(self, request, campaign_id):
+        from apps.lens.services import judging
+
+        campaign = _manager_campaign_or_404(request, campaign_id)
+        judge, token = judging.appoint(
+            campaign=campaign,
+            name=str(request.data.get("name") or ""),
+            email=str(request.data.get("email") or ""),
+            by=request.user,
+        )
+        # The link is shown ONCE, here: it is the credential, so it is not
+        # stored in a readable form and cannot be listed again later.
+        return Response(
+            {"id": str(judge.id), "name": judge.name, "url": judging.judge_url(token)},
+            status=201,
+        )
+
+
+class LensJudgeDetailView(GenericAPIView):
+    """`DELETE /api/lens/campaigns/{campaign_id}/judges/{judge_id}/` — revoke."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, campaign_id, judge_id):
+        from apps.lens.models import LensJudge
+        from apps.lens.services import judging
+
+        campaign = _manager_campaign_or_404(request, campaign_id)
+        judge = LensJudge.objects.filter(id=judge_id, campaign=campaign).first()
+        if judge is None:
+            raise NotFound("judge_not_found")
+        judging.revoke(judge=judge)
+        return Response({"revoked": True})
+
+
+class LensJudgingResultsView(GenericAPIView):
+    """`GET /api/lens/campaigns/{campaign_id}/judging/` — the panel's verdict,
+    identities shown. Manager-only: this is the answer before it is announced."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, campaign_id):
+        from apps.lens.services import judging
+
+        campaign = _manager_campaign_or_404(request, campaign_id)
+        return Response({"categories": judging.results(campaign)})
+
+
+class LensJudgePanelView(GenericAPIView):
+    """`GET /api/lens/j/{token}/` — the judging sheet, no login.
+
+    The school and the photographer are NOT in this payload: the rules promise
+    a view in which those identities are hidden, so they are omitted rather
+    than merely left unrendered.
+    """
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        from apps.lens.services import judging
+
+        judge = judging.resolve_judge(token)
+        if judge is None:
+            raise NotFound("judge_link_invalid")
+        return Response(judging.panel_payload(judge))
+
+
+class LensJudgeScoreView(GenericAPIView):
+    """`POST /api/lens/j/{token}/scores/` — record or revise one sheet."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [LensUploadThrottle]
+
+    def post(self, request, token):
+        from apps.lens.services import judging
+
+        judge = judging.resolve_judge(token)
+        if judge is None:
+            raise NotFound("judge_link_invalid")
+        score = judging.submit_score(
+            judge=judge,
+            kind=str(request.data.get("kind") or "photo"),
+            entry_id=str(request.data.get("entry_id") or ""),
+            marks=request.data.get("marks"),
+            note=str(request.data.get("note") or ""),
+        )
+        return Response({"total": score.total, "marks": score.marks}, status=200)

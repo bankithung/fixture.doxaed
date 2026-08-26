@@ -126,7 +126,9 @@ def set_title(
     )
     if story is None:
         raise NotFound("story_not_found")
-    if story.status != "pending":
+    from apps.lens.services.photos import owner_may_edit
+
+    if not owner_may_edit(story, story.campaign):
         raise DRFValidationError({"detail": "photo_locked"})
     story.title = (title or "").strip()[:120]
     if description is not None:
@@ -151,7 +153,9 @@ def move_photo(*, pass_: LensPass, story_id: object, upload_ref: object,
     )
     if story is None:
         raise NotFound("story_not_found")
-    if story.status != "pending":
+    from apps.lens.services.photos import owner_may_edit
+
+    if not owner_may_edit(story, story.campaign):
         raise DRFValidationError({"detail": "photo_locked"})
     photo = (
         LensPhoto.objects.filter(
