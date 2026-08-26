@@ -291,3 +291,111 @@ def test_advancement_refire_endpoint_repairs_stalled_slots():
     assert r.data["stalled_after"] == 0
     dep.refresh_from_db()
     assert dep.home_team_id == a.id  # the winner arrived
+
+
+def _eight(admin):
+    """8-team bracket with a 3rd-place playoff: QF r1, SF r2, 3rd+Final r3."""
+    t = create_tournament(user=admin, name="Out Of Order Cup")
+    teams = register_school(
+        tournament=t, school_name="S",
+        teams=[{"name": f"T{i + 1}", "players": []} for i in range(8)],
+    )
+    matches = generate_single_elimination(
+        tournament=t, teams=teams, third_place=True,
+    )
+    rnd = lambda n: sorted(  # noqa: E731
+        (m for m in matches if m.round_no == n), key=lambda m: m.match_no
+    )
+    qfs, sfs, last = rnd(1), rnd(2), rnd(3)
+    third = next(m for m in last if m.home_source.get("type") == "loser_of")
+    final = next(m for m in last if m.home_source.get("type") == "winner_of")
+    return t, qfs, sfs, third, final
+
+
+def test_semi_scored_before_its_quarters_still_advances_when_they_land():
+    """A result sheet can reach the desk out of order: the semi-final is
+    entered while its own teams are still "Winner of M3" placeholders.
+
+    The score is positional, so it stays correct — but at that instant the
+    match has no teams, so nothing could be passed down. Advancement must
+    therefore re-fire when the teams ARRIVE, not only when the match is
+    scored. Before this, the final read "Winner of M5" forever with the semi
+    showing FT, and only a manual re-fire could unstick it.
+    """
+    admin = _verified()
+    _t, qfs, sfs, _third, final = _eight(admin)
+
+    # The semi is scored first — both its sides are still unresolved.
+    assert sfs[0].home_team_id is None and sfs[0].away_team_id is None
+    record_score(match=sfs[0], home_score=2, away_score=0, by=admin)
+    advance_from_match(sfs[0].id)
+    final.refresh_from_db()
+    assert final.home_team_id is None  # nothing to pass on yet
+
+    # Now the quarters that feed it are entered.
+    record_score(match=qfs[0], home_score=2, away_score=0, by=admin)
+    advance_from_match(qfs[0].id)
+    record_score(match=qfs[1], home_score=0, away_score=2, by=admin)
+    advance_from_match(qfs[1].id)
+
+    sfs[0].refresh_from_db()
+    final.refresh_from_db()
+    assert sfs[0].home_team_id == qfs[0].home_team_id
+    assert sfs[0].away_team_id == qfs[1].away_team_id
+    # The semi's own result now means something, and it cascaded into the final.
+    assert final.home_team_id == qfs[0].home_team_id
+
+
+def test_third_place_slot_is_never_stamped_null_by_an_unknown_loser():
+    """The live failure: a semi is scored while only its WINNING side is
+    known, so ``winner_id`` resolves and ``loser_id`` does not.
+
+    The final's slot filled, the 3rd-place slot was written NULL and stayed
+    there — one bracket, half advanced. The losing side must simply wait, and
+    fill when its team lands.
+    """
+    admin = _verified()
+    _t, qfs, sfs, third, final = _eight(admin)
+
+    # Only the quarter feeding the semi's AWAY side is played.
+    record_score(match=qfs[1], home_score=0, away_score=2, by=admin)
+    advance_from_match(qfs[1].id)
+    sfs[0].refresh_from_db()
+    assert sfs[0].home_team_id is None and sfs[0].away_team_id is not None
+
+    # The semi is scored: away wins, so the winner is known, the loser is not.
+    record_score(match=sfs[0], home_score=0, away_score=2, by=admin)
+    advance_from_match(sfs[0].id)
+    final.refresh_from_db()
+    third.refresh_from_db()
+    assert final.home_team_id == sfs[0].away_team_id  # winner resolved
+    assert third.home_source.get("type") == "loser_of"
+    assert third.home_team_id is None  # NOT stamped null-and-forgotten
+
+    # The missing quarter lands; the 3rd-place slot fills from it.
+    record_score(match=qfs[0], home_score=2, away_score=0, by=admin)
+    advance_from_match(qfs[0].id)
+    third.refresh_from_db()
+    assert third.home_team_id == qfs[0].home_team_id
+
+
+def test_out_of_order_advancement_pairs_two_teams_from_one_school():
+    """Separation is a DRAW rule, not an advancement rule. Once the bracket is
+    running, whoever won is who plays: a slot resolved from a pointer is never
+    held back because it would pit one school against itself.
+    """
+    admin = _verified()
+    _t, qfs, sfs, _third, final = _eight(admin)  # every team is school "S"
+
+    for sf, pair in ((sfs[0], qfs[:2]), (sfs[1], qfs[2:])):
+        record_score(match=sf, home_score=2, away_score=0, by=admin)
+        advance_from_match(sf.id)
+        for qf in pair:
+            record_score(match=qf, home_score=2, away_score=0, by=admin)
+            advance_from_match(qf.id)
+
+    final.refresh_from_db()
+    assert final.home_team_id is not None
+    assert final.away_team_id is not None
+    home = final.home_team.institution_id
+    assert home == final.away_team.institution_id  # same school, still drawn

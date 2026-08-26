@@ -19,11 +19,18 @@ logger = logging.getLogger(__name__)
 _FINAL = (MatchStatus.COMPLETED, MatchStatus.WALKOVER)
 
 
-def advance_from_match(match_id) -> list[Match]:
-    """Fill dependents that point at this match. Returns the matches updated."""
+def advance_from_match(match_id, _seen: set[str] | None = None) -> list[Match]:
+    """Fill dependents that point at this match. Returns the matches updated.
+
+    Re-entrant: a dependent this pass fills may ALREADY hold a result, and
+    filling it is what finally makes that result mean something. See
+    ``_cascade`` — advancement is not a one-shot at completion time.
+    """
     m = Match.objects.filter(id=match_id, deleted_at__isnull=True).first()
     if m is None:
         return []
+    seen = set() if _seen is None else _seen
+    seen.add(str(match_id))
     resolved: list[Match] = []
     winner_id = m.winner_id
     loser_id = m.loser_id
@@ -65,9 +72,16 @@ def advance_from_match(match_id) -> list[Match]:
                                     {**src, "walkover_vacated": True},
                                 )
                                 fields.append(f"{side}_source")
-                        else:
+                        elif loser_id is not None:
                             setattr(dep, f"{side}_team_id", loser_id)
                             fields.append(f"{side}_team")
+                        # loser_id is None when this match was SCORED before
+                        # its own teams were known (a result entered out of
+                        # order): the winning side resolves off the score,
+                        # the losing side is still a placeholder. Writing it
+                        # would stamp NULL into the dependent and leave the
+                        # 3rd-place slot reading "Loser of M15" forever.
+                        # _cascade re-runs this pass when the team lands.
                 if fields:
                     dep.save(update_fields=[*fields, "updated_at"])
                     resolved.append(dep)
@@ -82,12 +96,45 @@ def advance_from_match(match_id) -> list[Match]:
     resolved.extend(_resolve_best_thirds(m))
     for dep in resolved:
         _settle_unopposed(dep)
+    resolved.extend(_cascade(resolved, seen))
     # Deferred multi-stage materialization: when this match's stage has fully
     # finalized, draw the next stage that sources from it (multi-stage §5.4).
     from apps.fixtures.services.stages import materialize_ready_stages
 
     materialize_ready_stages(m)
     return resolved
+
+
+def _cascade(resolved: list[Match], seen: set[str]) -> list[Match]:
+    """Re-advance from any dependent this pass filled that ALREADY holds a
+    result.
+
+    Advancement used to be a one-shot fired at the moment a match completed,
+    which assumes a match is always played after the matches feeding it. On a
+    real match day it is not: result sheets come off the courts out of order,
+    and a semi-final gets entered before the quarter-final that fills it. The
+    score is positional (home 2 - away 0), so it stays correct — but at that
+    instant one or both of the match's OWN teams are still placeholders, so
+    ``winner_id``/``loser_id`` resolve to None and the round below it never
+    hears anything. Nothing re-fired, and the bracket stalled on "Winner of
+    M5" with the feeder showing FT.
+
+    So the trigger is not "this match finished" but "this match's teams
+    changed": whenever a fill lands on a match that is already final, its own
+    dependents are resolved from it in turn. ``seen`` guards the walk.
+    """
+    out: list[Match] = []
+    for dep in resolved:
+        key = str(dep.id)
+        if key in seen:
+            continue
+        # _settle_unopposed may have transitioned it; read the committed row.
+        fresh = Match.objects.filter(id=dep.id, deleted_at__isnull=True).first()
+        if fresh is None or fresh.status not in _FINAL:
+            seen.add(key)  # nothing to pass on yet — its own result will fire
+            continue
+        out.extend(advance_from_match(fresh.id, seen))
+    return out
 
 
 def _settle_unopposed(dep: Match) -> None:
