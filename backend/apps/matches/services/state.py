@@ -73,6 +73,9 @@ def transition_match(
             if rules_for_match(locked) is not None:
                 raise ValidationError("no_half_time_for_set_sport")
 
+        if to_status == S.LIVE:
+            _guard_unresolved_sides(locked)
+
         replay = frm == S.ABANDONED and to_status == S.SCHEDULED
         if (
             frm in _IN_PLAY
@@ -195,6 +198,27 @@ def transition_match(
             lambda: publish_tournament_tick(tick_tid, tick_mid, "state")
         )
     return locked
+
+
+def _guard_unresolved_sides(locked: Match) -> None:
+    """A match whose sides are still pointers cannot be started (owner
+    2026-08-26: "if it is tbd then the start button should not work").
+
+    ``home_source``/``away_source`` fill from an earlier result (invariant #9),
+    and until that result lands the side is genuinely nobody: there is no team
+    to score for, no roster to check on court, and the scoreboard would publish
+    "To be decided 0 - 0 To be decided" to the public feed. Worse, the fill is
+    a write onto this very row, so a started placeholder either gets its teams
+    swapped underneath a running clock or advances a winner nobody played as.
+
+    This is the one precondition on ``scheduled -> live``. The pre-match sheet
+    deliberately does not block on missing officials or missing team sheets —
+    both are things a human on the day can vouch for — but no human can vouch
+    for a side that does not exist yet.
+    """
+    if locked.home_team_id and locked.away_team_id:
+        return
+    raise ValidationError("teams_not_resolved")
 
 
 def _guard_knockout_draw(locked: Match) -> None:

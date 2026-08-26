@@ -99,6 +99,11 @@ function errorMessage(e: unknown): string {
       "This match is scored by sets. Enter the set scores below.",
     ),
     walkover_requires_winner: t("A walkover needs a winner recorded first."),
+    // The gate disables Start for a TBD side, so this only reaches a tab left
+    // open since before the earlier result landed.
+    teams_not_resolved: t(
+      "Both sides must be decided before this match can start.",
+    ),
     knockout_match_cannot_end_drawn: t(
       "A knockout match cannot end level. Check the score.",
     ),

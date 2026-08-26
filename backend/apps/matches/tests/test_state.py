@@ -244,3 +244,49 @@ def test_extra_time_period_control():
     m.refresh_from_db()
     with pytest.raises(ValidationError, match="requires_level"):
         set_match_period(match=m, period="extra_time_first", by=admin)
+
+
+def test_cannot_start_a_match_whose_sides_are_still_tbd():
+    """Owner 2026-08-26: "if it is tbd then the start button should not work".
+
+    A bracket slot fills from an earlier result (invariant #9), and the fill is
+    a write onto this very row — so a placeholder that went live would either
+    have its teams swapped under a running clock or advance a winner nobody
+    played as.
+    """
+    admin, m = _match()
+    home, away = m.home_team, m.away_team
+
+    for missing in ("home_team", "away_team"):
+        Match.objects.filter(pk=m.pk).update(
+            home_team=None if missing == "home_team" else home,
+            away_team=None if missing == "away_team" else away,
+            status=MatchStatus.SCHEDULED,
+        )
+        m.refresh_from_db()
+        with pytest.raises(ValidationError):
+            transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+        m.refresh_from_db()
+        assert m.status == MatchStatus.SCHEDULED
+        assert m.started_at is None
+
+    # Both pointers resolved: the same match starts.
+    Match.objects.filter(pk=m.pk).update(home_team=home, away_team=away)
+    m.refresh_from_db()
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    m.refresh_from_db()
+    assert m.status == MatchStatus.LIVE
+
+
+def test_resuming_a_postponed_match_still_needs_both_sides():
+    """The guard is on the destination, not on one origin: `postponed -> live`
+    is the other door into play and must not be a way around it."""
+    admin, m = _match()
+    Match.objects.filter(pk=m.pk).update(
+        away_team=None, status=MatchStatus.POSTPONED,
+    )
+    m.refresh_from_db()
+    with pytest.raises(ValidationError):
+        transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    m.refresh_from_db()
+    assert m.status == MatchStatus.POSTPONED

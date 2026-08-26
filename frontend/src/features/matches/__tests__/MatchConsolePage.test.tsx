@@ -332,6 +332,38 @@ describe("MatchConsolePage", () => {
     expect(within(home).getByText("1 named")).toBeInTheDocument();
   });
 
+  it("refuses to start a match whose sides are still to be decided", async () => {
+    // Owner 2026-08-26: "if it is tbd then the start button should not work".
+    // The slot fills from an earlier result, and that fill writes onto this
+    // very row — starting first would swap the teams under a running clock.
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("scheduled", { home_team: null, away_team: null } as never),
+    );
+    renderConsole();
+
+    const start = await screen.findByTestId("start-match");
+    expect(start).toBeDisabled();
+    // And the bar says why, rather than leaving a dead button unexplained.
+    expect(screen.getByTestId("gate-readiness")).toHaveTextContent(
+      "Neither side is decided yet.",
+    );
+    expect(screen.getByTestId("gate-readiness")).toHaveTextContent(
+      "This match cannot start yet.",
+    );
+  });
+
+  it("still blocks the start when only one side is undecided", async () => {
+    vi.mocked(liveApi.snapshot).mockResolvedValue(
+      snap("scheduled", { away_team: null } as never),
+    );
+    renderConsole();
+
+    expect(await screen.findByTestId("start-match")).toBeDisabled();
+    expect(screen.getByTestId("gate-readiness")).toHaveTextContent(
+      "One side is still to be decided.",
+    );
+  });
+
   it("numbers a squad that has no shirt numbers rather than drawing empty boxes", async () => {
     // Table tennis and sepak rosters carry no jersey numbers, and the sheet
     // used to render an empty grey square beside every player.

@@ -31,13 +31,19 @@ import { competitionLabel } from "./console/shared";
  * two contradictory readings of the same match. The board does not exist until
  * the match does.
  *
- * The verification is the screen, not a checklist. Nothing here blocks Start:
- * the server allows `scheduled -> live` with no officials and no lineups
- * (`ALLOWED_TRANSITIONS` carries no precondition), and adding one in the UI
- * would strand the two cases that legitimately happen on the day — a bracket
- * slot still filling from an earlier result, and a crew assigned verbally. So
- * the sheet states plainly what is missing and lets the human decide, which is
- * exactly what "look in real and start" means.
+ * The verification is the screen, not a checklist. Missing officials and
+ * missing team sheets do NOT block Start: both are things a human on the day
+ * can vouch for (a crew assigned verbally, a squad the umpire can see at the
+ * table), so the sheet states plainly what is missing and lets the person
+ * decide, which is exactly what "look in real and start" means.
+ *
+ * **One thing does block it: a side that is still to be decided** (owner
+ * 2026-08-26: "if it is tbd then the start button should not work"). A
+ * bracket slot fills from an earlier result (invariant #9) and until it does
+ * the side is nobody at all: nothing to score for, nothing to check on court,
+ * and the public feed would carry "To be decided 0 - 0 To be decided". Nobody
+ * can vouch for a team that does not exist yet, so this is the single
+ * precondition, and `transition_match` enforces the same rule server-side.
  *
  * **The layout is a match sheet, in the order it is read** (owner 2026-08-19,
  * "redesign this page properly"). Four decisions carry it:
@@ -308,13 +314,20 @@ export function PreMatchGate({
     norm(group) === norm(`${sport}${category}`);
   const groupCell = group && !echoesHeading ? group : "";
 
+  // The one condition that stops the match, rather than merely being worth a
+  // look. Both sides unresolved and one side unresolved read differently on
+  // the day, so they are said differently.
+  const undecided = !match.home_team || !match.away_team;
+  const blocker = !undecided
+    ? ""
+    : !match.home_team && !match.away_team
+      ? t("Neither side is decided yet.")
+      : t("One side is still to be decided.");
+
   // Said once in the dialog and counted once in the action bar, so the sheet
-  // itself stays a sheet. None of these stop the match: they are what the
+  // itself stays a sheet. These do NOT stop the match: they are what the
   // person on court is being asked to look at.
   const warnings = [
-    !match.home_team || !match.away_team
-      ? t("One side is still to be decided.")
-      : "",
     match.home_team && !(match.home_team.players ?? []).length
       ? `${homeName}: ${t("no players listed.")}`
       : "",
@@ -469,24 +482,26 @@ export function PreMatchGate({
           data-testid="gate-readiness"
           className={cn(
             "flex items-center gap-1.5 text-xs font-medium",
-            warnings.length ? "text-warning" : "text-success",
+            blocker || warnings.length ? "text-warning" : "text-success",
           )}
         >
-          {warnings.length ? (
+          {blocker || warnings.length ? (
             <CircleAlert aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
           ) : (
             <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
           )}
-          {warnings.length === 0
-            ? t("Everything is in place.")
-            : warnings.length === 1
-              ? t("1 thing to check before you start.")
-              : `${warnings.length} ${t("things to check before you start.")}`}
+          {blocker
+            ? `${blocker} ${t("This match cannot start yet.")}`
+            : warnings.length === 0
+              ? t("Everything is in place.")
+              : warnings.length === 1
+                ? t("1 thing to check before you start.")
+                : `${warnings.length} ${t("things to check before you start.")}`}
         </p>
         <Button
           size="lg"
           data-testid="start-match"
-          disabled={pending}
+          disabled={pending || undecided}
           onClick={() => setConfirming(true)}
           className="h-12 w-full text-base sm:ml-auto sm:w-auto sm:min-w-48"
         >
