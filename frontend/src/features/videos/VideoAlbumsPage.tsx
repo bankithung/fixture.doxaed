@@ -26,6 +26,8 @@ export function VideoAlbumsPage(): React.ReactElement {
   const qc = useQueryClient();
   const toast = useToast();
   const [albumTitle, setAlbumTitle] = useState("");
+  const [albumNote, setAlbumNote] = useState("");
+  const [newOpen, setNewOpen] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
 
   const q = useQuery({
@@ -48,9 +50,15 @@ export function VideoAlbumsPage(): React.ReactElement {
   };
 
   const createAlbum = useMutation({
-    mutationFn: () => videosApi.createAlbum(id, { title: albumTitle.trim() }),
+    mutationFn: () =>
+      videosApi.createAlbum(id, {
+        title: albumTitle.trim(),
+        ...(albumNote.trim() ? { description: albumNote.trim() } : {}),
+      }),
     onSuccess: (a) => {
       setAlbumTitle("");
+      setAlbumNote("");
+      setNewOpen(false);
       setOpenId(a.id);
       refresh();
       toast.push({ kind: "success", title: t("Album created") });
@@ -98,26 +106,69 @@ export function VideoAlbumsPage(): React.ReactElement {
       </div>
 
       {canManage ? (
-        <div className="flex flex-wrap items-end gap-2 border-y border-border py-3">
-          <label className="flex min-w-[14rem] flex-1 flex-col gap-1">
-            <span className="text-xs font-medium">{t("New album")}</span>
+        <div className="flex items-center border-y border-border py-3">
+          <Button data-testid="new-album-btn" onClick={() => setNewOpen(true)}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            {t("New album")}
+          </Button>
+        </div>
+      ) : null}
+
+      {/* Creating an album is its own step, in its own modal — a text field
+          wedged into the header is not a create flow (owner 2026-08-26). */}
+      <Dialog
+        open={canManage && newOpen}
+        onOpenChange={setNewOpen}
+        ariaLabel={t("New album")}
+      >
+        <div className="flex flex-col gap-4" data-testid="new-album-modal">
+          <DialogHeader>
+            <DialogTitle>{t("New album")}</DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              {t("A day, a round or a theme — however you group the footage.")}
+            </p>
+          </DialogHeader>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium">{t("Album name")} *</span>
             <Input
               value={albumTitle}
+              autoFocus
               onChange={(e) => setAlbumTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && albumTitle.trim()) createAlbum.mutate();
+              }}
               placeholder={t("Day 1, Finals, Highlights")}
               data-testid="album-title-input"
             />
           </label>
-          <Button
-            data-testid="create-album-btn"
-            disabled={!albumTitle.trim() || createAlbum.isPending}
-            onClick={() => createAlbum.mutate()}
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            {t("Create album")}
-          </Button>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium">
+              {t("Description")}{" "}
+              <span className="font-normal text-muted-foreground">
+                ({t("optional")})
+              </span>
+            </span>
+            <Input
+              value={albumNote}
+              onChange={(e) => setAlbumNote(e.target.value)}
+              placeholder={t("Friday, 28 August")}
+              data-testid="album-note-input"
+            />
+          </label>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewOpen(false)}>
+              {t("Cancel")}
+            </Button>
+            <Button
+              data-testid="create-album-btn"
+              disabled={!albumTitle.trim() || createAlbum.isPending}
+              onClick={() => createAlbum.mutate()}
+            >
+              {createAlbum.isPending ? t("Creating") : t("Create album")}
+            </Button>
+          </DialogFooter>
         </div>
-      ) : null}
+      </Dialog>
 
       {q.isLoading ? (
         <div className="h-40 animate-pulse rounded-lg bg-muted/40" />

@@ -71,13 +71,22 @@ describe("VideoAlbumsPage", () => {
     });
   });
 
-  it("creates an album", async () => {
+  it("creates an album from its own modal", async () => {
     renderPage();
     await screen.findByTestId("album-a1");
+    // A text field wedged into the header is not a create flow.
+    expect(screen.queryByTestId("new-album-modal")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("new-album-btn"));
+    await screen.findByTestId("new-album-modal");
     await userEvent.type(screen.getByTestId("album-title-input"), "Finals");
+    await userEvent.type(screen.getByTestId("album-note-input"), "Saturday");
     await userEvent.click(screen.getByTestId("create-album-btn"));
     await waitFor(() =>
-      expect(videosApi.createAlbum).toHaveBeenCalledWith("t1", { title: "Finals" }),
+      expect(videosApi.createAlbum).toHaveBeenCalledWith("t1", {
+        title: "Finals",
+        description: "Saturday",
+      }),
     );
   });
 
