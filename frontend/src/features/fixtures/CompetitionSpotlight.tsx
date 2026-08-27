@@ -100,25 +100,25 @@ const BOARD = {
   meta: "text-[clamp(0.875rem,1.9vw,2rem)]",
   // The sets-won line qualifies the score, so it stays the quiet one.
   sets: "text-[clamp(1rem,3vw,3.5rem)]",
-  // The three that carry the board, sized off `min(vw, vh)` rather than `vw`
-  // alone (owner 2026-08-27: "lets make the icons and the score bigger").
+  // The three that carry the board. Sized `min(vw, vh)` because WIDTH is not
+  // the binding constraint here — HEIGHT is: a side column is the score
+  // stacked on the crest, sharing the viewport's height with however many set
+  // rows the match has run to.
   //
-  // Width is not the binding constraint here — HEIGHT is. A side column is the
-  // score stacked on the crest, so those two share the viewport's height with
-  // however many set rows the match has run to, and a five-set match adds rows
-  // to a board that is already nearly full. On a 16:9 screen 1vw is only
-  // ~0.56vh, so a `vw`-only size that looks right on a laptop runs off the
-  // bottom of an ultrawide. `min()` lets the vw term win on the ordinary
-  // screens this is read on, and the vh term take over exactly when the screen
-  // is too short for it — the board gets bigger without ever needing a scroll
-  // nobody in a hall can perform.
-  score: "text-[clamp(3rem,min(19vw,24vh),22rem)]",
-  setRow: "text-[clamp(1.25rem,min(5.5vw,7vh),6rem)]",
-  // The crest is the ONLY thing identifying a side, so it is the biggest
-  // element on the board — and `object-contain` at the call site means a wide
-  // school logo is shown whole instead of cropped to a circle.
+  // The vh term is a CEILING for short screens, not the everyday size, and
+  // getting that wrong is easy: on 16:9 one vh is only 0.5625vw, so `24vh`
+  // reads as 13.5vw and silently overrules a 19vw intent. (It did — the first
+  // pass at "bigger" shrank the score from 288px to 259px on 1080p.) So each
+  // vh term is set ABOVE its vw term at 16:9 and only takes over on something
+  // wider, and the comments below carry the 1080p figure the numbers produce.
+  //
+  // Owner 2026-08-27: "make the logos a bit smaller and the scores bigger."
+  score: "text-[clamp(3.5rem,min(20vw,38vh),24rem)]", // 384px on 1080p
+  setRow: "text-[clamp(1.25rem,min(5vw,9vh),5.5rem)]", // 96px on 1080p
+  // The crest identifies the side on its own, but it is the quieter half of
+  // the pair now: the numbers are what the hall is actually watching.
   crest:
-    "h-[clamp(4rem,min(21vw,28vh),26rem)] w-[clamp(4rem,min(21vw,28vh),26rem)] text-[clamp(1.5rem,min(5vw,6vh),5.5rem)]",
+    "h-[clamp(3.5rem,min(13vw,26vh),18rem)] w-[clamp(3.5rem,min(13vw,26vh),18rem)] text-[clamp(1.25rem,min(4vw,7vh),4.5rem)]", // 250px on 1080p
 } as const;
 
 function fullscreenElement(): Element | null {
