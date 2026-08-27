@@ -239,18 +239,6 @@ export function computeTournamentNav(
             icon: ListChecks,
           }
         : null,
-      // Every fixture this tournament has had (owner 2026-08-21). A draw is
-      // redrawn, rescheduled and repaired, and each pass used to overwrite the
-      // last; this is the way back to an earlier one. Manager-gated to match
-      // the server — restoring rewrites the fixture.
-      canManage
-        ? {
-            key: "fixture-versions",
-            label: t("Fixture versions"),
-            href: routes.tournamentFixtureVersions(tournamentId),
-            icon: History,
-          }
-        : null,
       // Live outcomes — visible to every member (read).
       {
         key: "standings",
@@ -359,6 +347,14 @@ export function computeTournamentNav(
             label: t("Settings"),
             href: routes.tournamentSettings(tournamentId),
             icon: Settings,
+          }
+        : null,
+      canManage
+        ? {
+            key: "fixture-versions",
+            label: t("Fixture versions"),
+            href: routes.tournamentFixtureVersions(tournamentId),
+            icon: History,
           }
         : null,
     ];

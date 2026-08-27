@@ -275,9 +275,6 @@ describe("computeTournamentNav", () => {
       "my-tasks",
       "control",
       "matches",
-      // Every fixture this tournament has had, beside the fixture pages it
-      // belongs with (owner 2026-08-21).
-      "fixture-versions",
       "standings",
       "leaders",
       "crew",
@@ -300,7 +297,7 @@ describe("computeTournamentNav", () => {
     ).toEqual(["public"]);
     // Only people + config remain; the setup-flow pages are gone from the nav.
     const manage = groups.find((g) => g.key === "manage")!;
-    expect(manage.items.map((i) => i.key)).toEqual(["members", "settings"]);
+    expect(manage.items.map((i) => i.key)).toEqual(["members", "settings", "fixture-versions"]);
     const allKeys = flatKeys(groups);
     for (const gone of ["overview", "sports", "forms", "institutions", "fixtures"]) {
       expect(allKeys).not.toContain(gone);
