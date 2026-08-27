@@ -20,7 +20,9 @@ const HEAVY_THROTTLE_MS = 10_000;
 
 /** Polling cadence while the SSE stream is down/unavailable (graceful
  * degradation — exactly the public page's pre-SSE behavior). */
-const FALLBACK_POLL_MS = 60_000;
+// 5s, not 60s: this is the degraded path when the live stream is down, and a
+// minute of stale scores is indistinguishable from the app being broken.
+const FALLBACK_POLL_MS = 5_000;
 
 export interface ControlRoom {
   query: UseQueryResult<ControlRoomPayload>;

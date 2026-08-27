@@ -26,6 +26,15 @@ import { useEventStream } from "@/lib/useEventStream";
  * so every view advances live. Presentational pieces live in
  * publicTournamentViews.tsx. */
 
+/** Poll interval used ONLY while the SSE stream is down.
+ *
+ * Was 60s. That made any momentary drop of the stream — connection pressure,
+ * a wifi blip, a sleeping laptop, a proxy anywhere in between — cost up to a
+ * minute of stale scores, which is what a scorer actually experienced on
+ * 2026-08-27. SSE remains the real-time path; this only bounds how bad the
+ * degraded path can get, and 5s is well inside "nobody notices". */
+const DEGRADED_POLL_MS = 5_000;
+
 export const LIVE_STATUSES = new Set([
   "live",
   "half_time",
@@ -73,7 +82,7 @@ export function usePublicTournament(
     queryKey: ["public-schedule", slug, id],
     queryFn: () => tournamentsApi.publicSchedule(slug, id),
     staleTime: 30_000,
-    refetchInterval: connected ? false : 60_000,
+    refetchInterval: connected ? false : DEGRADED_POLL_MS,
   });
   const standingsQ = useQuery({
     queryKey: ["public-standings", slug, id],
@@ -81,7 +90,7 @@ export function usePublicTournament(
     enabled: scheduleQ.data !== undefined,
     retry: false,
     staleTime: 30_000,
-    refetchInterval: connected ? false : 60_000,
+    refetchInterval: connected ? false : DEGRADED_POLL_MS,
   });
 
   return { scheduleQ, standingsQ, connected };

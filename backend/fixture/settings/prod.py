@@ -49,10 +49,21 @@ CACHES = {
 }
 
 # --- Channels — Redis pub/sub (live delivery layer, invariants #4/#11) -----
+# `socket_timeout` MUST stay above channels_redis's own ``brpop_timeout`` (5s).
+# channels_redis issues ``bzpopmin(channel, timeout=5)`` — it asks Redis to block
+# for 5s — while redis-py 8.0.0 changed its default ``socket_timeout`` from None
+# to 5. Both deadlines then land on the same instant, and whenever the socket one
+# wins the read raises ``redis.exceptions.TimeoutError``. That is NOT a subclass
+# of the builtin TimeoutError, so it escapes the consumer's handler, kills the
+# ASGI app and drops the connection — the scorer-room WebSocket reconnected every
+# few seconds and the public page fell back to its 60s poll, so a scored point
+# took a minute or two to appear (2026-08-27). apps/live/sse.py already guards the
+# SSE half of the same transport explicitly; this fixes it at the layer instead,
+# which covers the WS consumers too.
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [REDIS_URL]},
+        "CONFIG": {"hosts": [{"address": REDIS_URL, "socket_timeout": 10}]},
     }
 }
 
