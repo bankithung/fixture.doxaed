@@ -97,9 +97,10 @@ const KIND_LABEL: Record<SpotlightKind, string> = {
  * screen, and the middle term is what carries it between the two. */
 const BOARD = {
   bar: "text-[clamp(0.875rem,1.7vw,2rem)]",
-  // Smaller than the first cut, to leave room under it for the people.
-  name: "text-[clamp(1rem,2.7vw,3.25rem)]",
-  player: "text-[clamp(0.875rem,2.1vw,2.5rem)]",
+  // Smaller max so long school names sit on one line; clamp still scales the
+  // whole range so a phone at the court and a hall screen both read clean.
+  name: "text-[clamp(0.75rem,1.5vw,2rem)]",
+  player: "text-[clamp(0.6rem,1.1vw,1.25rem)]",
   score: "text-[clamp(3.5rem,15vw,16rem)]",
   clock: "text-[clamp(2.5rem,10vw,10rem)]",
   meta: "text-[clamp(0.875rem,1.9vw,2rem)]",
@@ -124,16 +125,16 @@ function BoardSide({
   players: string[];
 }): React.ReactElement {
   return (
-    <div className="flex min-w-0 flex-col items-center gap-[clamp(0.5rem,1.5vw,1.5rem)] text-center">
+    <div className="flex min-w-0 flex-col items-center gap-[clamp(0.25rem,0.6vw,0.6rem)] text-center">
       <TeamCrest
         src={side?.crest}
         name={side?.name ?? ""}
         className={BOARD.crest}
       />
-      <div className="flex min-w-0 max-w-full flex-col gap-[0.25em]">
+      <div className="flex min-w-0 max-w-full flex-col gap-[0.15em]">
         <span
           className={cn(
-            "max-w-full font-semibold leading-tight [overflow-wrap:anywhere]",
+            "max-w-full font-semibold leading-tight [overflow-wrap:anywhere] whitespace-nowrap",
             BOARD.name,
           )}
         >
@@ -322,7 +323,7 @@ export function CompetitionSpotlight({
         className={cn(
           "mx-auto grid w-full grid-cols-1 items-center sm:grid-cols-[1fr_auto_1fr]",
           board
-            ? "max-w-[95vw] gap-[clamp(0.75rem,3vw,4rem)]"
+            ? "max-w-[95vw] gap-[clamp(0.5rem,1.5vw,2rem)]"
             : "max-w-xl gap-3 sm:gap-6",
         )}
       >
