@@ -387,6 +387,12 @@ describe("CompetitionSpotlight", () => {
     expect(crests[1]!.parentElement).toBe(scores[1]!.parentElement);
     expect(scores[0]!).toHaveTextContent("11");
     expect(scores[1]!).toHaveTextContent("7");
+    // Score ABOVE the badge (owner 2026-08-27: "keep the logo down and the
+    // score up") — the numbers share one eye line across the board.
+    expect(
+      scores[0]!.compareDocumentPosition(crests[0]!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     // The two columns sit either side of the middle, on one row.
     const row = crests[0]!.parentElement!.parentElement!;
     expect(row.className).toMatch(/grid-cols-\[1fr_auto_1fr\]/);

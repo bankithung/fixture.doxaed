@@ -119,10 +119,11 @@ function fullscreenElement(): Element | null {
  * (owner 2026-08-27: "the score and the logo in one column").
  *
  * The board carries no names at all — "we will keep only the team logo and the
- * scores" — so the crest does the whole job of saying who this is, and putting
- * the number directly beneath it is what ties the two together: a single
- * combined "11 - 7" in the middle belonged to neither badge, and the eye had to
- * work out which end went with which side.
+ * scores" — so the crest does the whole job of saying who this is, and stacking
+ * the number with it is what ties the two together: a single combined "11 - 7"
+ * in the middle belonged to neither badge, and the eye had to work out which
+ * end went with which side. The score sits ON TOP of the badge, so the numbers
+ * share one eye line across the board and the badges read as a base.
  *
  * Two departures from the shared `TeamCrest`, both for the same reason:
  *
@@ -144,12 +145,10 @@ function BoardSide({
 }): React.ReactElement {
   return (
     <div className="flex min-w-0 flex-col items-center gap-[0.1em]">
-      <TeamCrest
-        src={side?.crest}
-        name={side?.name ?? ""}
-        className={cn(BOARD.crest, "rounded-2xl object-contain p-[0.35em]")}
-      />
-      <span className="sr-only">{side?.name ?? t("TBD")}</span>
+      {/* Score ABOVE the badge (owner 2026-08-27: "keep the logo down and the
+          score up"). The numbers are what changes and what the hall is
+          watching, so they sit on the eye line across the whole board, with
+          the badges reading as a base underneath them. */}
       {score !== null ? (
         <span
           data-testid="spotlight-side-score"
@@ -161,6 +160,12 @@ function BoardSide({
           {score}
         </span>
       ) : null}
+      <TeamCrest
+        src={side?.crest}
+        name={side?.name ?? ""}
+        className={cn(BOARD.crest, "rounded-2xl object-contain p-[0.35em]")}
+      />
+      <span className="sr-only">{side?.name ?? t("TBD")}</span>
     </div>
   );
 }
