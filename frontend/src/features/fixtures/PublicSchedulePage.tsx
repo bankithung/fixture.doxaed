@@ -1231,7 +1231,6 @@ function PublicScheduleInner(): React.ReactElement {
                           matches={selectedComp.matches}
                           timeZone={tz}
                           title={selectedComp.label}
-                          rosters={rosters}
                         />
                       ) : (
                         <LiveBand matches={bandLive} timeZone={tz} />

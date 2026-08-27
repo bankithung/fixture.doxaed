@@ -15,7 +15,6 @@ import {
   shortGroup,
   spotlightNextUp,
   spotlightPick,
-  type RosterIndex,
   type SpotlightKind,
 } from "./publicTournament";
 import { LivePulse, TeamName, fmtKickoff } from "./publicMatchCard";
@@ -97,101 +96,67 @@ const KIND_LABEL: Record<SpotlightKind, string> = {
  * screen, and the middle term is what carries it between the two. */
 const BOARD = {
   bar: "text-[clamp(0.875rem,1.7vw,2rem)]",
-  // Smaller max so long school names sit on one line; clamp still scales the
-  // whole range so a phone at the court and a hall screen both read clean.
-  name: "text-[clamp(0.75rem,1.5vw,2rem)]",
-  player: "text-[clamp(0.75rem,1.3vw,1.75rem)]",
   score: "text-[clamp(3.5rem,15vw,16rem)]",
   clock: "text-[clamp(2.5rem,10vw,10rem)]",
   meta: "text-[clamp(0.875rem,1.9vw,2rem)]",
-  sets: "text-[clamp(0.875rem,1.6vw,1.75rem)]",
+  // The sets-won line qualifies the big score, so it sits just under it.
+  sets: "text-[clamp(1rem,2.6vw,3rem)]",
+  // One finished set per row, big enough to read down the column from the
+  // back of a hall.
+  setRow: "text-[clamp(1.5rem,4.5vw,5rem)]",
+  // The crest is now the ONLY thing identifying a side, so it is the biggest
+  // it has ever been — and `object-contain` (below) means a wide school logo
+  // is shown whole instead of being cropped to a circle.
   crest:
-    "h-[clamp(3rem,8vw,9rem)] w-[clamp(3rem,8vw,9rem)] text-[clamp(0.875rem,2.2vw,2.5rem)]",
+    "h-[clamp(4.5rem,13vw,15rem)] w-[clamp(4.5rem,13vw,15rem)] text-[clamp(1.25rem,3.5vw,4rem)]",
 } as const;
 
 function fullscreenElement(): Element | null {
   return document.fullscreenElement ?? null;
 }
 
-/** One side on the BOARD: crest above the name, name in full. Deliberately not
- * `TeamName` — that is a row component, it truncates and it links, and a
- * screen nobody can tap has no use for either. */
-function BoardSide({
+/** One side on the BOARD: the crest, and nothing else.
+
+ * The board carries no names at all (owner 2026-08-27: "no need to show the
+ * team name, we will keep only the team logo and the scores"). So the crest is
+ * doing the whole job of saying who this is, which drives both departures from
+ * the shared `TeamCrest` look:
+ *
+ * - **`object-contain`, not `object-cover`.** The shared crest is a circular
+ *   avatar and crops to fill it, which is right in a dense row and wrong here:
+ *   a school badge is usually wide, and cropping cuts the very thing the hall
+ *   is reading. Contained inside a rounded square, the logo is shown WHOLE.
+ * - **It is no longer decorative**, so it stops being `aria-hidden` by proxy —
+ *   the team name rides along in an `sr-only` span. A sighted viewer reads the
+ *   badge; a screen reader still gets the team, and neither gets nothing.
+ */
+function BoardCrest({
   side,
-  players,
 }: {
   side: PublicScheduleSide | null;
-  /** Who is actually on court. Empty = a squad too big to name here. */
-  players: string[];
 }): React.ReactElement {
   return (
-    <div className="flex min-w-0 flex-col items-center gap-[clamp(0.25rem,0.6vw,0.6rem)] text-center">
+    <div className="flex min-w-0 flex-col items-center">
       <TeamCrest
         src={side?.crest}
         name={side?.name ?? ""}
-        className={BOARD.crest}
+        className={cn(BOARD.crest, "rounded-2xl object-contain p-[0.35em]")}
       />
-      <div className="flex min-w-0 max-w-full flex-col gap-[0.15em]">
-        <span
-          className={cn(
-            "max-w-full font-semibold leading-tight [overflow-wrap:anywhere] whitespace-nowrap",
-            BOARD.name,
-          )}
-        >
-          {side?.name ?? t("TBD")}
-        </span>
-        {players.map((n) => (
-          <span
-            key={n}
-            className={cn(
-              "max-w-full font-semibold leading-tight text-foreground [overflow-wrap:anywhere] whitespace-nowrap",
-              BOARD.player,
-            )}
-          >
-            {n}
-          </span>
-        ))}
-      </div>
+      <span className="sr-only">{side?.name ?? t("TBD")}</span>
     </div>
   );
-}
-
-/**
- * The names to print under each side, or none.
- *
- * Both sides or neither: a board that named one pair and not the other would
- * read as missing data rather than as a rule. The cap is what makes it a rule
- * — at most two on a side means the competitors ARE these people, which is
- * true of singles and doubles in any sport and false of every squad game.
- */
-const NAMEABLE_SQUAD = 2;
-
-function boardSheets(
-  m: PublicScheduleMatch,
-  rosters: RosterIndex | undefined,
-): { home: string[]; away: string[] } {
-  const none = { home: [], away: [] };
-  if (!rosters) return none;
-  const home = m.home ? (rosters.get(m.home.id) ?? []) : [];
-  const away = m.away ? (rosters.get(m.away.id) ?? []) : [];
-  const biggest = Math.max(home.length, away.length);
-  if (biggest === 0 || biggest > NAMEABLE_SQUAD) return none;
-  return { home: home.map((p) => p.name), away: away.map((p) => p.name) };
 }
 
 export function CompetitionSpotlight({
   matches,
   timeZone,
   title,
-  rosters,
 }: {
   /** Every match of ONE competition. The pick is made here, not by the page. */
   matches: PublicScheduleMatch[];
   timeZone: string;
   /** The competition's own name, so the board says what it is showing. */
   title?: string;
-  /** Team sheets, so a singles or doubles board can name the players. */
-  rosters?: RosterIndex;
 }): React.ReactElement | null {
   const [board, setBoard] = useState(false);
   const ref = useRef<HTMLElement>(null);
@@ -247,7 +212,6 @@ export function CompetitionSpotlight({
   // A knockout's group_label IS its competition label, so unfiltered it
   // reprinted the heading one line below itself.
   const stageBit = shortGroup(m.group_label, m.leaf_label);
-  const sheets = boardSheets(m, rosters);
   // An unplayed match wears its kickoff as the centrepiece; repeating it in the
   // meta line under itself is the same fact twice.
   const meta = [stageBit, played ? kickoff : "", m.venue].filter(Boolean);
@@ -317,75 +281,125 @@ export function CompetitionSpotlight({
     </Link>
   );
 
+  /** Every finished set on its OWN row. A board is read by running an eye
+   * down a column; the wrapped strip of chips the card uses gives it nothing
+   * to follow, and at board size it would run off the screen sideways. */
+  const setRows = sv?.finished ?? [];
+
+  /** THE BOARD (owner 2026-08-27). No names anywhere — "we will keep only the
+   * team logo and the scores". Two rows, in reading order:
+   *
+   *   1. the live score alone at the top, with nothing beside it to compete
+   *      for the eye from across a hall,
+   *   2. the two crests wide apart with the finished sets stacked BETWEEN
+   *      them, so a set score is read as "this side won that one".
+   *
+   * Every size is a `clamp`, so the same board is legible on a phone at the
+   * court and on a projector at the back of a hall with no breakpoint jump.
+   */
+  const boardTop = (
+    <>
+      <div className="flex flex-col items-center gap-[0.15em]">
+        {centre}
+        {sv ? (
+          <p
+            data-testid="spotlight-sets-won"
+            className={cn("font-tabular text-muted-foreground", BOARD.sets)}
+          >
+            {t("Sets")} {sv.sets[0]}-{sv.sets[1]}
+          </p>
+        ) : null}
+        {hasPens ? (
+          <p className={cn("font-tabular text-muted-foreground", BOARD.sets)}>
+            {t("Pens")} {m.home_pens}-{m.away_pens}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="grid w-full max-w-[95vw] grid-cols-[1fr_auto_1fr] items-center gap-[clamp(0.75rem,3vw,4rem)]">
+        <BoardCrest side={m.home} />
+        <div
+          data-testid="spotlight-set-rows"
+          className="flex flex-col items-center gap-[0.12em]"
+        >
+          {setRows.map((set, i) => (
+            <p
+              key={i}
+              className={cn(
+                "font-tabular font-semibold leading-none tabular-nums",
+                BOARD.setRow,
+              )}
+            >
+              {/* The side that took the set is the one in full strength — the
+                  only cue left once the names are gone. */}
+              <span
+                className={cn(
+                  set[0] > set[1] ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {set[0]}
+              </span>
+              <span className="px-[0.25em] text-muted-foreground">-</span>
+              <span
+                className={cn(
+                  set[1] > set[0] ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {set[1]}
+              </span>
+            </p>
+          ))}
+        </div>
+        <BoardCrest side={m.away} />
+      </div>
+    </>
+  );
+
+  const cardGrid = (
+    <div className="mx-auto grid w-full max-w-xl grid-cols-1 items-center gap-3 sm:grid-cols-[1fr_auto_1fr] sm:gap-6">
+      <TeamName
+        side={m.home}
+        crestSize="lg"
+        wrap
+        className="mx-auto text-sm font-medium sm:mx-0 sm:ml-auto sm:text-base"
+      />
+      <div className="flex flex-col items-center gap-[0.35em]">
+        {centre}
+        {sv ? (
+          <p className="font-tabular text-sm text-muted-foreground">
+            {t("Set")} {sv.setNo} · {t("Sets")} {sv.sets[0]}-{sv.sets[1]}
+          </p>
+        ) : null}
+        {hasPens ? (
+          <p className="font-tabular text-xs text-muted-foreground">
+            {t("Pens")} {m.home_pens}-{m.away_pens}
+          </p>
+        ) : null}
+        {setRows.length > 0 ? (
+          <div className="flex flex-wrap justify-center gap-[0.4em]">
+            {setRows.map((set, i) => (
+              <span
+                key={i}
+                className="rounded-md bg-muted px-[0.5em] py-[0.15em] font-tabular text-xs text-muted-foreground"
+              >
+                {set[0]}-{set[1]}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <TeamName
+        side={m.away}
+        crestSize="lg"
+        wrap
+        className="mx-auto text-sm font-medium sm:mx-0 sm:mr-auto sm:text-base"
+      />
+    </div>
+  );
+
   const body = (
     <>
-      <div
-        className={cn(
-          "mx-auto grid w-full grid-cols-1 items-center sm:grid-cols-[1fr_auto_1fr]",
-          board
-            ? "max-w-[95vw] gap-[clamp(0.5rem,1.5vw,2rem)]"
-            : "max-w-xl gap-3 sm:gap-6",
-        )}
-      >
-        {board ? (
-          <BoardSide side={m.home} players={sheets.home} />
-        ) : (
-          <TeamName
-            side={m.home}
-            crestSize="lg"
-            wrap
-            className="mx-auto text-sm font-medium sm:mx-0 sm:ml-auto sm:text-base"
-          />
-        )}
-        <div className="flex flex-col items-center gap-[0.35em]">
-          {centre}
-          {sv ? (
-            <p
-              className={cn(
-                "font-tabular text-muted-foreground",
-                board ? BOARD.sets : "text-sm",
-              )}
-            >
-              {t("Set")} {sv.setNo} · {t("Sets")} {sv.sets[0]}-{sv.sets[1]}
-            </p>
-          ) : null}
-          {hasPens ? (
-            <p
-              className={cn(
-                "font-tabular text-muted-foreground",
-                board ? BOARD.sets : "text-xs",
-              )}
-            >
-              {t("Pens")} {m.home_pens}-{m.away_pens}
-            </p>
-          ) : null}
-          {sv && sv.finished.length > 0 ? (
-            <div className="flex flex-wrap justify-center gap-[0.4em]">
-              {sv.finished.map((s, i) => (
-                <span
-                  key={i}
-                  className={cn(
-                    "rounded-md bg-muted px-[0.5em] py-[0.15em] font-tabular text-muted-foreground",
-                    board ? BOARD.sets : "text-xs",
-                  )}
-                >
-                  {s[0]}-{s[1]}
-                </span>
-              ))}
-            </div>
-          ) : null}
-        </div>
-        {board ? (
-          <BoardSide side={m.away} players={sheets.away} />
-        ) : (
-          <TeamName
-            side={m.away}
-            crestSize="lg"
-            wrap
-            className="mx-auto text-sm font-medium sm:mx-0 sm:mr-auto sm:text-base"
-          />
-        )}
-      </div>
+      {board ? boardTop : cardGrid}
 
       {meta.length ? (
         <p

@@ -37,36 +37,18 @@ function m(
   } as PublicScheduleMatch;
 }
 
-function mount(
-  matches: PublicScheduleMatch[],
-  rosters?: Map<string, { id: string; name: string; jersey_no: number | null; captain: boolean }[]>,
-) {
+function mount(matches: PublicScheduleMatch[]) {
   return render(
     <MemoryRouter>
       <CompetitionSpotlight
         matches={matches}
         timeZone="Asia/Kolkata"
         title="Table Tennis · U-14 · Boys · Singles"
-        rosters={rosters as never}
       />
     </MemoryRouter>,
   );
 }
 
-/** A team sheet keyed the way `usePublicRosters` builds it. */
-function sheet(...rows: [string, string[]][]) {
-  return new Map(
-    rows.map(([teamId, names]) => [
-      teamId,
-      names.map((name, i) => ({
-        id: `${teamId}-${i}`,
-        name,
-        jersey_no: null,
-        captain: false,
-      })),
-    ]),
-  );
-}
 
 async function openBoard() {
   Object.defineProperty(Element.prototype, "requestFullscreen", {
@@ -242,11 +224,10 @@ describe("CompetitionSpotlight", () => {
     expect(section.children[1]!.className).toMatch(/flex-1/);
   });
 
-  it("shows a school's whole name on the board rather than cutting it", async () => {
-    // Owner 2026-08-26: "the school names should show full".
-    Object.defineProperty(Element.prototype, "requestFullscreen", {
-      configurable: true, writable: true, value: vi.fn().mockResolvedValue(undefined),
-    });
+  it("carries no team name at all — the crest is the whole identity", async () => {
+    // Owner 2026-08-27: "no need to show the team name, we will keep only the
+    // team logo and the scores". Read from 20m a badge lands faster than a
+    // 40-character school name, and the names were most of the ink.
     const long = "Holy Cross Higher Secondary School ST-1";
     mount([
       m({
@@ -257,11 +238,31 @@ describe("CompetitionSpotlight", () => {
         away: { id: "hc", name: long, short_name: "HC", school: "Holy Cross" },
       }),
     ]);
-    await userEvent.click(screen.getByTestId("spotlight-fullscreen"));
+    await openBoard();
 
-    const name = screen.getByText(long);
-    expect(name.className).not.toMatch(/truncate/);
-    expect(name.className).toMatch(/overflow-wrap/);
+    // Nothing VISIBLE names the side...
+    const painted = screen.queryAllByText(long).filter(
+      (el) => !el.className.includes("sr-only"),
+    );
+    expect(painted).toEqual([]);
+    // ...but a screen reader is not left with an unlabelled badge.
+    expect(screen.getByText(long).className).toMatch(/sr-only/);
+  });
+
+  it("shows the crest whole rather than cropping it to a circle", async () => {
+    // Owner 2026-08-27: "make sure the logo is not cropped and bigger size".
+    // The shared TeamCrest is a circular avatar and uses object-cover, which
+    // cuts a wide school badge — exactly the thing the hall is now reading.
+    mount([m({ id: "done", status: "completed", home_score: 2, away_score: 0 })]);
+    await openBoard();
+
+    for (const crest of screen.getAllByTestId("team-crest-fallback")) {
+      expect(crest.className).toMatch(/object-contain/);
+      expect(crest.className).not.toMatch(/object-cover/);
+      expect(crest.className).not.toMatch(/rounded-full/);
+      // Bigger, and sized off the viewport rather than a fixed box.
+      expect(crest.className).toMatch(/clamp\(/);
+    }
   });
 
   it("scales with the viewport instead of with a breakpoint", async () => {
@@ -321,60 +322,47 @@ describe("CompetitionSpotlight", () => {
     expect(meta).toHaveTextContent("Mph · T1");
   });
 
-  it("names the players on a singles or doubles board", async () => {
-    // Owner 2026-08-26: "for tt we can" show the player names. A side of one
-    // or two IS the person or pair the hall is watching.
-    mount(
-      [m({ id: "live", status: "live" })],
-      sheet(["a", ["Niputo Assumi"]], ["b", ["Soumen Paul"]]),
-    );
+  it("stacks each finished set on its own row between the crests", async () => {
+    // Owner 2026-08-27: "in the center the set scores, each score 1 row".
+    // A board is read by running an eye DOWN a column; the card's wrapped
+    // strip of chips gives it nothing to follow and runs off a wide screen.
+    Object.defineProperty(Element.prototype, "requestFullscreen", {
+      configurable: true, writable: true, value: vi.fn().mockResolvedValue(undefined),
+    });
+    // The LAST row is the set in play; the rest are finished (liveSetView).
+    mount([
+      m({
+        id: "live",
+        status: "live",
+        sport: "table_tennis",
+        set_scores: [[11, 8], [9, 11], [11, 6], [5, 3]],
+        home_score: 2,
+        away_score: 1,
+      }),
+    ]);
     await openBoard();
 
-    expect(screen.getByText("Niputo Assumi")).toBeInTheDocument();
-    expect(screen.getByText("Soumen Paul")).toBeInTheDocument();
-    // The school stays the headline, the player sits under it.
-    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    const rows = screen.getByTestId("spotlight-set-rows");
+    expect(rows.children).toHaveLength(3);
+    expect(rows.children[0]).toHaveTextContent("11-8");
+    expect(rows.children[1]).toHaveTextContent("9-11");
+    expect(rows.children[2]).toHaveTextContent("11-6");
+    // Stacked, not wrapped side by side.
+    expect(rows.className).toMatch(/flex-col/);
   });
 
-  it("names both halves of a doubles pair", async () => {
-    mount(
-      [m({ id: "live", status: "live" })],
-      sheet(["a", ["Vihika I Awomi", "Kinoka I Awomi"]], ["b", ["I Lomi Sumi", "Joyce Yanna Thapa"]]),
-    );
-    await openBoard();
-    expect(screen.getByText("Vihika I Awomi")).toBeInTheDocument();
-    expect(screen.getByText("Kinoka I Awomi")).toBeInTheDocument();
-  });
-
-  it("does NOT name a squad, which is what sepak and football are", async () => {
-    // Owner 2026-08-26: "for sepak we dont have to show the names here".
-    // Five names a side is clutter on a board read from 20m away — and the
-    // rule is the squad size, not a sport check, so football behaves too.
-    const regu = ["Sojanthung Jami", "Methuselah Gurung", "Toika Shohe", "Huka V. Assumi", "Thangjoysang Limsong"];
-    mount([m({ id: "live", status: "live" })], sheet(["a", regu], ["b", regu.slice(0, 5)]));
+  it("puts the score above the crests, not between them", async () => {
+    // Owner 2026-08-27: "at the top the score, below the score the team logo,
+    // one team on the left and one on the right".
+    mount([m({ id: "done", status: "completed", home_score: 2, away_score: 0 })]);
     await openBoard();
 
-    for (const n of regu) expect(screen.queryByText(n)).toBeNull();
-    expect(screen.getByText("Alpha")).toBeInTheDocument();
-  });
-
-  it("names both sides or neither, never one", async () => {
-    // A board naming one pair and leaving the other blank reads as missing
-    // data rather than as a rule.
-    mount(
-      [m({ id: "live", status: "live" })],
-      sheet(["a", ["Solo Player"]], ["b", ["One", "Two", "Three"]]),
-    );
-    await openBoard();
-    expect(screen.queryByText("Solo Player")).toBeNull();
-  });
-
-  it("shows no names at all when the rosters never loaded", async () => {
-    mount([m({ id: "live", status: "live" })]);
-    await openBoard();
-    // The board still stands up on the school names alone.
-    expect(screen.getByText("Alpha")).toBeInTheDocument();
-    expect(screen.getByText("Bravo")).toBeInTheDocument();
+    const score = screen.getByLabelText("Open the match centre");
+    const crest = screen.getAllByTestId("team-crest-fallback")[0]!;
+    // The score comes first in document order — i.e. above.
+    expect(
+      score.compareDocumentPosition(crest) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("moves to the next match on its own once the live one finishes", () => {
