@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CloudRainWind, Search } from "lucide-react";
+import { CloudRainWind, Printer, Search } from "lucide-react";
 import { liveApi } from "@/api/live";
 import { tournamentsApi, type ControlRoomMatch } from "@/api/tournaments";
 import { useAuthStore } from "@/features/auth/authStore";
@@ -13,6 +13,13 @@ import { Link } from "react-router-dom";
 import { PencilLine } from "lucide-react";
 import { routes } from "@/lib/routes";
 import { ShiftDayDialog } from "@/features/fixtures/ShiftDayDialog";
+import { publishedRows } from "@/features/fixtures/publishedExport";
+import {
+  openPreviewCourtGridPdf,
+  openPreviewPdf,
+  type PreviewExportMeta,
+} from "@/features/fixtures/previewExport";
+import { Button } from "@/components/ui/button";
 import {
   fmtDayLabel,
   leafLabelOf,
@@ -211,6 +218,33 @@ export function MatchesBoardPage(): React.ReactElement {
       return true;
     });
   }, [matches, comp, venue, status, needsScorer, needsOfficial, mine, search, perms.userId]);
+
+  // PRINTING THE REAL FIXTURE (owner 2026-08-27). The court grid and the run
+  // sheet lived only on the dry-run preview, which holds an UNPUBLISHED draw —
+  // an organiser who printed from there could hand out pairings the tournament
+  // was never going to play. Same documents, fed from the committed matches,
+  // and from the FILTERED rows so what is on screen is what comes out.
+  // The rows carry UTC instants; the export sheets read a wall clock, so the
+  // tournament's zone travels with them (invariant 14).
+  const printRows = useMemo(() => publishedRows(filtered, tz), [filtered, tz]);
+  const printMeta = useMemo<PreviewExportMeta>(() => {
+    const bits = [
+      comp ? (competitions.find(([k]) => k === comp)?.[1] ?? comp) : "",
+      venue,
+      status === "all" ? "" : t(STATUS_GROUP_LABEL[status] ?? status),
+      search.trim(),
+    ].filter(Boolean);
+    return {
+      title: tournamentQ.data?.name || t("Fixture"),
+      filterSummary: bits.join(" · "),
+      shown: filtered.length,
+      total: matches.length,
+      groupLabel: t("Day and court"),
+      unplaced: filtered.filter((m) => !m.scheduled_at).length,
+      // The published fixture is NOT a trial run, and must never print as one.
+      draft: false,
+    };
+  }, [comp, venue, status, search, filtered, matches.length, competitions, tournamentQ.data]);
 
   // Order the flat list (group key first, then kickoff), slice a 20-row page,
   // then group the slice in encounter order — long fixtures stay readable.
@@ -483,6 +517,39 @@ export function MatchesBoardPage(): React.ReactElement {
             {isPlainMember
               ? toggle(mine, "board-mine", t("My matches"), () => setMine((v) => !v))
               : null}
+            {/* Print what is on screen, through the preview's own layouts. */}
+            <span className="mx-1 hidden h-4 w-px bg-border sm:block" />
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="board-print-grid"
+              disabled={filtered.length === 0}
+              title={t("Time down the side, courts across the top")}
+              onClick={() =>
+                openPreviewCourtGridPdf({ rows: printRows, meta: printMeta })
+              }
+            >
+              <Printer aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+              {t("Court grid")}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="board-print-list"
+              disabled={filtered.length === 0}
+              title={t("One row per match, grouped by day and court")}
+              onClick={() =>
+                openPreviewPdf({
+                  rows: printRows,
+                  sort: null,
+                  groupBy: "day_venue",
+                  meta: printMeta,
+                })
+              }
+            >
+              <Printer aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+              {t("List")}
+            </Button>
             {/* What the filters actually left, stated plainly. */}
             <span className="ml-auto font-tabular text-xs text-muted-foreground">
               {filtered.length === matches.length

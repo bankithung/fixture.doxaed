@@ -28,3 +28,8 @@ deploy/CREDENTIALS-PROD.md
 
 # Seeded demo/admin credentials — never commit
 backend/scripts/CREDENTIALS.md
+
+# Local Claude/commandcode tooling state. NEVER commit: its cached shell
+# permission entries embed live credentials (a plaintext PGPASSWORD was found
+# in here on 2026-08-27), and this repository is public.
+.commandcode/

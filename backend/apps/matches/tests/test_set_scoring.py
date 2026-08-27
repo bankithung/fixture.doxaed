@@ -421,3 +421,123 @@ def test_completion_derives_raw_set_leads_when_rules_never_satisfied():
     transition_match(match=m, to_status=MatchStatus.COMPLETED, by=admin)
     m.refresh_from_db()
     assert (m.home_score, m.away_score) == (3, 0)
+
+
+# --------------------------------------------------------------- overshoot
+# A set ENDS the instant it is won, so a score above the winning score is not
+# a result — it is points that were never played. Before this the validator
+# only asked "reached the target?" and "won by the margin?", both of which
+# 12-9 and 99-0 satisfy (owner 2026-08-27, reported from the live console).
+
+TT_BO5 = {"type": "sets", "points": 11, "win_by": 2, "cap": None, "best_of": 5}
+SEPAK_2024 = {
+    "type": "sets", "points": 15, "win_by": 2, "cap": 17, "best_of": 3,
+    "deciding": {"points": 15, "win_by": 2, "cap": 17},
+}
+
+
+def _one(h, a, rules):
+    r = dict(rules)
+    r["best_of"] = 1
+    return compute_sets([[h, a]], r)
+
+
+@pytest.mark.parametrize("h,a", [
+    (11, 0), (11, 9), (12, 10), (13, 11), (14, 12), (30, 28),
+])
+def test_table_tennis_legal_game_scores(h, a):
+    assert _one(h, a, TT_BO5) == (1, 0)
+
+
+@pytest.mark.parametrize("h,a", [
+    (12, 0),    # 11-0 ended it
+    (15, 0),
+    (99, 0),    # the reported bug
+    (12, 9),    # 11-9 ended it
+    (13, 9),
+    (20, 9),
+    (13, 10),   # 12-10 ended it
+    (14, 11),   # 13-11 ended it
+])
+def test_table_tennis_rejects_overshot_game(h, a):
+    with pytest.raises(DjangoValidationError) as e:
+        _one(h, a, TT_BO5)
+    assert e.value.messages[0] == "set_score_overshoot"
+
+
+@pytest.mark.parametrize("h,a", [(15, 0), (15, 13), (16, 14), (17, 15), (17, 16)])
+def test_sepak_legal_set_scores(h, a):
+    assert _one(h, a, SEPAK_2024) == (1, 0)
+
+
+@pytest.mark.parametrize("h,a", [(16, 0), (17, 0), (16, 13), (17, 13), (17, 14)])
+def test_sepak_rejects_overshot_set(h, a):
+    with pytest.raises(DjangoValidationError) as e:
+        _one(h, a, SEPAK_2024)
+    assert e.value.messages[0] == "set_score_overshoot"
+
+
+def test_cap_still_allows_the_one_point_finish():
+    """The ceiling is the one place a single-point margin wins."""
+    assert _one(17, 16, SEPAK_2024) == (1, 0)
+    assert _one(25, 24, SEPAK) == (1, 0)          # legacy 21/cap-25
+    with pytest.raises(DjangoValidationError):
+        _one(18, 16, SEPAK_2024)                  # nothing goes past the cap
+
+
+def test_sets_won_lenient_waits_for_the_winning_score():
+    from apps.matches.services.set_scoring import sets_won_lenient
+
+    # table tennis: 11-10 is deuce in progress, 12-10 is the game
+    assert sets_won_lenient([[11, 10]], TT_BO5) == (0, 0)
+    assert sets_won_lenient([[12, 10]], TT_BO5) == (1, 0)
+    # sepak: a one-point lead only wins AT the ceiling
+    assert sets_won_lenient([[16, 15]], SEPAK_2024) == (0, 0)
+    assert sets_won_lenient([[17, 16]], SEPAK_2024) == (1, 0)
+    assert sets_won_lenient([[16, 14]], SEPAK_2024) == (1, 0)
+
+
+def test_live_tap_board_refuses_the_point_that_cannot_exist():
+    """`update_set_progress` accepted ANY non-negative pair, so the console
+    could keep tapping long after the game was over."""
+    from apps.matches.services.set_scoring import update_set_progress
+    from apps.matches.services.state import transition_match
+
+    admin = _admin("overshoot@test.local")
+    t = create_tournament(user=admin, name="Overshoot")
+    m = _match(t, sport="table_tennis")
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    m.refresh_from_db()
+
+    # legal in-progress scores are still fine, deuce included
+    for scores in ([[0, 0]], [[10, 10]], [[11, 10]], [[11, 9], [5, 3]]):
+        update_set_progress(match=m, set_scores=scores, rules=TT_BO5,
+                            by=admin, event_id=uuid.uuid4())
+
+    for bad in ([[99, 0]], [[12, 9]], [[50, 3]], [[11, 9], [13, 10]]):
+        with pytest.raises(DjangoValidationError) as e:
+            update_set_progress(match=m, set_scores=bad, rules=TT_BO5,
+                                by=admin, event_id=uuid.uuid4())
+        assert e.value.messages[0] == "set_score_overshoot"
+
+
+def test_live_tap_board_rejects_a_skipped_game():
+    from apps.matches.services.set_scoring import update_set_progress
+    from apps.matches.services.state import transition_match
+
+    admin = _admin("skipped@test.local")
+    t = create_tournament(user=admin, name="Skipped")
+    m = _match(t, sport="table_tennis")
+    transition_match(match=m, to_status=MatchStatus.LIVE, by=admin)
+    m.refresh_from_db()
+    with pytest.raises(DjangoValidationError) as e:
+        update_set_progress(match=m, set_scores=[[5, 3], [11, 9]], rules=TT_BO5,
+                            by=admin, event_id=uuid.uuid4())
+    assert e.value.messages[0] == "unfinished_set_before_last"
+    # and nothing may follow the game that decided the match
+    with pytest.raises(DjangoValidationError) as e:
+        update_set_progress(
+            match=m, set_scores=[[11, 9], [11, 5], [11, 4], [3, 1]],
+            rules=TT_BO5, by=admin, event_id=uuid.uuid4(),
+        )
+    assert e.value.messages[0] == "set_after_match_decided"

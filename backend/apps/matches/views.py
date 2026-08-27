@@ -42,6 +42,7 @@ from apps.matches.serializers import (
 from apps.matches.services.events import record_match_event
 from apps.matches.services.incidents import file_incident
 from apps.matches.services.lineups import confirm_lineup, set_lineup
+from apps.matches.services.numbering import number_rows
 from apps.matches.services.officials import (
     assign_official,
     official_clashes,
@@ -292,11 +293,16 @@ class TournamentMatchListView(GenericAPIView):
             .order_by("group_label", "match_no")
         )
         labels: dict[str, str] = {}
+        rows = list(qs)
+        # The fixture's numbering, once for the whole list (numbering.py) —
+        # this view builds a serializer per row, so letting each one look the
+        # numbering up would cost a query per match.
+        fixture_nos = number_rows(rows)
 
         def row(m: Match) -> dict:
             if m.leaf_key and m.leaf_key not in labels:
                 labels[m.leaf_key] = leaf_label(t.sports, m.leaf_key)
-            data = MatchSerializer(m).data
+            data = MatchSerializer(m, context={"fixture_nos": fixture_nos}).data
             data["leaf_label"] = labels.get(m.leaf_key, "")
             data["scorer"] = (
                 {"id": str(m.scorer.id), "name": m.scorer.name or m.scorer.email}
@@ -315,7 +321,7 @@ class TournamentMatchListView(GenericAPIView):
             ]
             return data
 
-        return Response([row(m) for m in qs])
+        return Response([row(m) for m in rows])
 
 
 class TournamentLeadersView(GenericAPIView):

@@ -33,6 +33,7 @@ from apps.fixtures.services.preview import (
     stored_venue_records,
 )
 from apps.fixtures.services.readiness import fixture_readiness
+from apps.matches.services.numbering import number_rows
 from apps.fixtures.services.scheduler import apply_schedule
 from apps.streaming.services.links import CourtLinkResolver
 from apps.teams.services.crest import team_crest
@@ -894,11 +895,15 @@ class ControlRoomDayView(GenericAPIView):
         day_rows = by_day.get(day, [])  # already in scheduled_at order
 
         labels: dict[str, str] = {}
+        # One numbering for the whole fixture, not one lookup per row: the
+        # control room prints the same match numbers as the public sheet
+        # (numbering.py), and it must not cost a query per match to say so.
+        fixture_nos = number_rows(matches)
 
         def row(m: Match) -> dict:
             if m.leaf_key and m.leaf_key not in labels:
                 labels[m.leaf_key] = leaf_label(t.sports, m.leaf_key)
-            data = MatchSerializer(m).data
+            data = MatchSerializer(m, context={"fixture_nos": fixture_nos}).data
             data["leaf_label"] = labels.get(m.leaf_key, "")
             data["scorer"] = (
                 {"id": str(m.scorer.id), "name": m.scorer.name or m.scorer.email}
@@ -1456,6 +1461,11 @@ class PublicTournamentScheduleView(GenericAPIView):
             else []
         )
         links = CourtLinkResolver(courts, tz=tz, tournament=t)
+        # ONE numbering for the whole product (see `matches/numbering.py`) —
+        # computed here off the rows already in hand, so the public sheet, the
+        # bracket, the printed grid and the scorer's card all print the same
+        # number for the same match.
+        fixture_nos = number_rows(rows)
         for m in rows:
             if m.leaf_key and m.leaf_key not in labels:
                 labels[m.leaf_key] = leaf_label(t.sports, m.leaf_key)
@@ -1471,6 +1481,10 @@ class PublicTournamentScheduleView(GenericAPIView):
                 "group_label": m.group_label,
                 "round_no": m.round_no,
                 "match_no": m.match_no,
+                # The number this match is KNOWN by, counted within its own
+                # competition. `match_no` remains the draw's tournament-wide
+                # emission sequence, which is not what any sheet prints.
+                "fixture_no": fixture_nos.get(str(m.id)),
                 "status": m.status,
                 "day": local.date().isoformat() if local else None,
                 "scheduled_at": (

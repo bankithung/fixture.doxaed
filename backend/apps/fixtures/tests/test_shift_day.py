@@ -304,6 +304,31 @@ def test_conflict_on_target_day_409_unless_forced():
     assert _loc(m1, tz).day == 15
 
 
+def test_a_conflict_that_already_exists_does_not_block_moving_the_day():
+    """The rain day is the day most likely to be already broken, and shifting
+    it is a pure translation: every match keeps its time-of-day and venue, so
+    the move cannot create a clash that was not there.
+
+    This is routine rather than exotic once a bracket is live. A knockout slot
+    is a placeholder when the day is drawn, so a school's finals only start
+    overlapping when the semis resolve real teams into them, long after the
+    schedule was validated. Refusing the shift left the organizer with no way
+    to move the day at all except `force`.
+    """
+    admin, t, tz, m1, m2, _ = _setup()
+    # Both rain-day matches on one court at one time: already double-booked.
+    m2.scheduled_at = m1.scheduled_at
+    m2.venue = m1.venue
+    m2.save(update_fields=["scheduled_at", "venue"])
+
+    r = _shift(admin, t, {"from_date": "2026-08-03", "to_date": "2026-08-15"})
+
+    assert r.status_code == 200, r.content
+    for m in (m1, m2):
+        m.refresh_from_db()
+        assert _loc(m, tz).day == 15  # the day moved, pre-existing clash and all
+
+
 def test_team_blackout_on_target_day_blocks():
     admin, t, _tz, m1, _m2, _ = _setup()
     t.constraints = [{

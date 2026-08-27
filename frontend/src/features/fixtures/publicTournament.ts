@@ -290,6 +290,27 @@ export function groupLineups(comp: Competition): GroupLineup[] {
 }
 
 /**
+ * The least a COMMITTED match must be to be numbered. Deliberately structural:
+ * the public payload, the control-room row and the printed document are three
+ * different shapes of the same fixture, and every one of them must be able to
+ * ask for the numbering rather than re-derive it (owner 2026-08-27 — a printed
+ * court grid numbered its own way and disagreed with the public sheet about
+ * which match "Winner of M16" meant).
+ */
+export interface NumberableMatch {
+  id: string;
+  /** The server's own answer. When present it is simply used — that is the
+   * single source of truth (owner 2026-08-27); the sort below is the fallback
+   * for payloads that carry no number (a previewed draw, an old snapshot). */
+  fixture_no?: number | null;
+  leaf_key?: string | null;
+  stage?: string | null;
+  stage_no?: number | null;
+  round_no?: number | null;
+  match_no?: number | null;
+}
+
+/**
  * The NUMBER printed against every match, counted WITHIN its own competition —
  * the same number the generated fixture sheet carries (owner 2026-08-19, see
  * `previewGrid.matchNumbers`), so "Winner of match 5" can be found by eye on
@@ -300,10 +321,25 @@ export function groupLineups(comp: Competition): GroupLineup[] {
  * the schedule is repaired. `match_no` is the tournament-wide sequence the
  * generator hands out in emission order, which is exactly the tie-break the
  * preview reads off its `ref`; the two therefore agree match for match.
+ *
+ * THIS IS THE ONE DOOR for match numbers. A surface that prints them calls
+ * it — it never sorts its own way and counts, because the numbers are how the
+ * fixture refers to itself: get the tie-break wrong and the same document's
+ * "Winner of M16" points at a different game than the board does.
+ *
+ * And the number itself comes from the SERVER (`fixture_no`, stamped by
+ * `matches/services/numbering.py`) whenever the payload carries one — one
+ * fixture, one answer, on every page. The client-side ordering below stays as
+ * the fallback for the payloads that have no committed matches to stamp: the
+ * dry-run preview, and a stored fixture snapshot.
  */
 export function matchNumbers(
-  matches: readonly PublicScheduleMatch[],
+  matches: readonly NumberableMatch[],
 ): Map<string, number> {
+  const stamped = matches.filter((m) => m.fixture_no != null);
+  if (stamped.length === matches.length) {
+    return new Map(stamped.map((m) => [m.id, m.fixture_no as number]));
+  }
   const order = [...matches].sort(
     (a, b) =>
       (a.leaf_key || "").localeCompare(b.leaf_key || "") ||

@@ -333,7 +333,11 @@ export function PreMatchGate({
   const drawLine = [
     stageLabel(match.stage),
     match.round_no ? `${t("Round")} ${match.round_no}` : "",
-    match.match_no ? `${t("Match")} ${match.match_no}` : "",
+    // The FIXTURE's number, the one printed on the order of play — never the
+    // draw's tournament-wide sequence (owner 2026-08-27).
+    match.fixture_no ?? match.match_no
+      ? `${t("Match")} ${match.fixture_no ?? match.match_no}`
+      : "",
   ]
     .filter(Boolean)
     .join(" · ");

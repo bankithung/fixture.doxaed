@@ -120,6 +120,10 @@ export interface LiveSnapshot {
     stage?: string;
     round_no?: number;
     match_no?: number;
+    /** The number the fixture calls this match by (server-stamped, counted
+     * within its own competition) — what the sheet in the official's hand
+     * says. `match_no` is the draw's tournament-wide sequence. */
+    fixture_no?: number | null;
     /** What an empty side is waiting on, resolved from its typed pointer
      * (invariant #9): "Winner of match 82", "Group A, place 2". Empty once the
      * side is filled, or when the pointer names nothing. */

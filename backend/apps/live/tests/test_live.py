@@ -282,7 +282,13 @@ def test_snapshot_names_the_result_an_empty_side_waits_on():
     """A placeholder used to reach the console as "To be decided" with "fills
     from an earlier result" underneath: two ways of saying nothing. The typed
     pointer (invariant #9) knows the answer, and the referenced match is named
-    by the same ``match_no`` the console prints for the match in hand."""
+    by its ``fixture_no`` — the number counted within its own competition,
+    which is what the sheet in the official's hand carries.
+
+    It used to be named by the raw ``match_no``, the draw's tournament-wide
+    emission sequence: the console said "Winner of match 82" about the game
+    every printed sheet calls M1, and an official went looking for a match that
+    does not exist (owner 2026-08-27, `matches/services/numbering.py`)."""
     admin = _verified()
     t = create_tournament(user=admin, name="Cup")
     a, b = register_school(
@@ -301,8 +307,13 @@ def test_snapshot_names_the_result_an_empty_side_waits_on():
     )
 
     body = APIClient().get(f"/api/live/match/{final.id}/").json()["match"]
-    assert body["home_source_label"] == "Winner of match 82"
+    # The semi is its competition's first match, whatever the draw numbered it.
+    assert body["home_source_label"] == "Winner of match 1"
     assert body["away_source_label"] == "Group A, place 2"
+    # And the match in hand prints the same kind of number beside it, so the
+    # two can be matched by eye on one sheet.
+    assert body["fixture_no"] == 2
+    assert body["match_no"] == 90
 
     # A side that IS filled has nothing to wait on, so it says nothing.
     body = APIClient().get(f"/api/live/match/{semi.id}/").json()["match"]

@@ -615,7 +615,10 @@ export function GameHistory({
   const total = Math.max(bestOf, entered.length);
   const rows = Array.from({ length: total }, (_, i) => {
     const row = entered[i];
-    const filled = row != null && row[0] !== "" && row[1] !== "";
+    // PLAYED means either side has a figure. Requiring both made every
+    // whitewash game (11-0, entered as "11" and a blank) read "Not needed"
+    // even though it was the game that won the match (owner 2026-08-27).
+    const filled = row != null && (row[0] !== "" || row[1] !== "");
     const isCurrent = i === entered.length - 1;
     // Once a side has clinched, the games the rule allowed but the match no
     // longer needs read "Not needed", never "Pending".
@@ -627,8 +630,12 @@ export function GameHistory({
           : over
             ? "skipped"
             : "pending";
-    const home = row?.[0] === "" || row?.[0] == null ? null : row[0];
-    const away = row?.[1] === "" || row?.[1] == null ? null : row[1];
+    // A blank side of a PLAYED game is a nought, and reads as one; a game
+    // that never happened keeps its dash.
+    const blank0 = row?.[0] === "" || row?.[0] == null;
+    const blank1 = row?.[1] === "" || row?.[1] == null;
+    const home = blank0 ? (filled ? "0" : null) : row[0];
+    const away = blank1 ? (filled ? "0" : null) : row[1];
     // Who took this period — bolds the winning figure, mutes the other, so a
     // glance down the column reads the run of the match.
     const took: 0 | 1 | null =

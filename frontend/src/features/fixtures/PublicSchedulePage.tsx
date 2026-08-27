@@ -139,13 +139,10 @@ function LiveBand({
           {matches.length}
         </span>
       </div>
-      <div
-        className={cn(
-          "grid gap-3",
-          !single && "sm:grid-cols-2",
-          many && "xl:grid-cols-3",
-        )}
-      >
+      {/* ONE tile per row (owner 2026-08-27). Side by side, two long school
+          names, a set strip and a scoreline had no room left and ran into
+          each other; a live match is read across, not down. */}
+      <div className="grid gap-3">
         {matches.map((m) => {
           const sv = liveSetView(m);
           const sm = statusMeta(m.status);

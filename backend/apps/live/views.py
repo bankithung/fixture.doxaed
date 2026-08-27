@@ -11,6 +11,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from apps.matches.models import Match, MatchEvent, MatchEventType, MatchStatus
+from apps.matches.services.numbering import fixture_numbers
 from apps.matches.services.set_scoring import rules_for_match
 from apps.teams.services.crest import team_crest
 from apps.tournaments.services.sports import leaf_roster_rules
@@ -179,7 +180,7 @@ def _h2h(m) -> list[dict]:
     ]
 
 
-def _source_label(src: dict | None, tournament_id) -> str:
+def _source_label(src: dict | None, tournament_id, nos: dict | None = None) -> str:
     """What an empty side is WAITING ON, in the order-of-play's own words.
 
     A placeholder used to read "To be decided" with "Fills from an earlier
@@ -188,9 +189,10 @@ def _source_label(src: dict | None, tournament_id) -> str:
     the runner-up of Group A. An official standing at the table can act on
     that; "to be decided" is only true and useless.
 
-    The referenced match is named by its own ``match_no``, the same number
-    this screen prints for the match in hand, so the two can be matched by eye
-    on one printed sheet.
+    The referenced match is named by its ``fixture_no`` — the number counted
+    within its own competition (``matches/services/numbering.py``), which is
+    the same number this screen prints for the match in hand and the same one
+    the sheet in the official's hand carries, so the two can be matched by eye.
     """
     if not isinstance(src, dict):
         return ""
@@ -206,13 +208,12 @@ def _source_label(src: dict | None, tournament_id) -> str:
     ref = src.get("match_id") or src.get("ref")
     if not ref:
         return ""
-    no = (
-        Match.objects.filter(
-            tournament_id=tournament_id, id=ref, deleted_at__isnull=True,
-        )
-        .values_list("match_no", flat=True)
-        .first()
-    )
+    # The FIXTURE's number for the feeder, not its raw `match_no`: a hub that
+    # said "Winner of match 40" about the game the sheet calls M5 sent an
+    # official looking for a match that does not exist (numbering.py). The
+    # caller hands the map in — this view names up to three matches, and every
+    # public viewer hits it.
+    no = (nos if nos is not None else fixture_numbers(tournament_id)).get(str(ref))
     if not no:
         return ""
     return (
@@ -268,6 +269,11 @@ class LiveMatchSnapshotView(GenericAPIView):
         ]
         visible = list(reversed(visible))[:30]
 
+        # The fixture's numbering, ONCE: this response names up to three
+        # matches (the one in hand and the two its sides wait on) and is read
+        # by every public viewer, so it must not cost a query apiece.
+        fixture_nos = fixture_numbers(m.tournament_id)
+
         return Response(
             {
                 # Server wall clock at the moment this snapshot was built.
@@ -318,15 +324,20 @@ class LiveMatchSnapshotView(GenericAPIView):
                     "stage": m.stage,
                     "round_no": m.round_no,
                     "match_no": m.match_no,
+                    # The number the FIXTURE calls this match, counted within
+                    # its own competition — the one printed on the sheet the
+                    # official at the table is holding (numbering.py). One
+                    # extra query, on a single-match view.
+                    "fixture_no": fixture_nos.get(str(m.id)),
                     # What an empty side is waiting on, so a placeholder names
                     # the result that fills it instead of saying "to be
                     # decided" twice over.
                     "home_source_label": (
-                        _source_label(m.home_source, m.tournament_id)
+                        _source_label(m.home_source, m.tournament_id, fixture_nos)
                         if m.home_team_id is None else ""
                     ),
                     "away_source_label": (
-                        _source_label(m.away_source, m.tournament_id)
+                        _source_label(m.away_source, m.tournament_id, fixture_nos)
                         if m.away_team_id is None else ""
                     ),
                     # P1.d: the sport's console metadata — the client picks

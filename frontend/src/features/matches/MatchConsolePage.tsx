@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Download, Printer, Radio, Undo2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  ListChecks,
+  Printer,
+  Radio,
+  Undo2,
+} from "lucide-react";
 import { routes } from "@/lib/routes";
 import { liveApi, type LiveTeam, type MiniPlayer } from "@/api/live";
 import { tournamentsApi } from "@/api/tournaments";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogDescription,
@@ -411,6 +418,20 @@ export function MatchConsolePage(): React.ReactElement {
         {queued} {t("will sync")}
       </span>
     ) : null;
+  // Once the result is RECORDED the console has no job left, and the scorer's
+  // next one is on their task list — so the board offers that door rather
+  // than leaving them to find the way back (owner 2026-08-27). It leads the
+  // pair because it is the next thing to DO; printing is optional paperwork.
+  const myTasksButton = isFinal ? (
+    <Link
+      to={routes.tournamentMyTasks(id)}
+      data-testid="go-to-my-tasks"
+      className={cn(buttonVariants({ size: "sm" }), "shrink-0")}
+    >
+      <ListChecks aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+      {t("Go to my tasks")}
+    </Link>
+  ) : null;
   const printButton = isFinal ? (
     <Button
       size="sm"
@@ -728,7 +749,10 @@ export function MatchConsolePage(): React.ReactElement {
               </span>
             </div>
           ) : (
-            printButton
+            <>
+              {myTasksButton}
+              {printButton}
+            </>
           )}
         </div>
       )}
@@ -806,9 +830,10 @@ export function MatchConsolePage(): React.ReactElement {
           clock={live && elapsedSec != null ? fmtClock(elapsedSec) : null}
           title={matchContext}
           titleActions={
-            queuedBadge || printButton ? (
+            queuedBadge || myTasksButton || printButton ? (
               <>
                 {queuedBadge}
+                {myTasksButton}
                 {printButton}
               </>
             ) : null

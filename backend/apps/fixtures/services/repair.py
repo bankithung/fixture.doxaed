@@ -102,13 +102,41 @@ def _validation_config(tournament) -> ScheduleConfig:
     return cfg
 
 
+def _violation_identity(v: dict[str, Any]) -> tuple:
+    """A violation's identity WITHOUT its clock reading.
+
+    Two matches that already clash still clash after the pair is moved
+    together, and the organizer was already living with that. Keying on the
+    time would make every such conflict look new the moment the day slides,
+    which is what turned "shift the rain day" into a permanent 409 on exactly
+    the day worth moving.
+    """
+    pair = tuple(sorted(
+        str(x) for x in (v.get("match_id"), v.get("other_match_id")) if x
+    ))
+    return (
+        v.get("code"), pair, v.get("team_id"),
+        v.get("linked_team_id"), v.get("venue"),
+    )
+
+
 def validate_slot_changes(
     tournament, changes: dict[Any, tuple[datetime, str]],
 ) -> list[dict[str, Any]]:
-    """HARD violations a set of manual moves would create, scoped to the
-    moved matches' day/teams/venue (a pre-existing conflict elsewhere never
-    blocks an unrelated repair). ``changes``: match id → (naive
-    tournament-local start, venue)."""
+    """HARD violations a set of manual moves would CREATE, scoped to the
+    moved matches' day/teams/venue (a pre-existing conflict never blocks an
+    unrelated repair). ``changes``: match id → (naive tournament-local start,
+    venue).
+
+    "Create" is measured against the schedule as it stands: the same rules are
+    run over the CURRENT slots first and anything already broken is subtracted.
+    Without that baseline the scoping filter below still let a pre-existing
+    conflict block a repair whenever both its matches were part of the move —
+    which is every match, once a whole day is shifted. Advancement makes this
+    routine rather than exotic: a bracket slot is a placeholder when the day is
+    drawn, so a school's four finals only start overlapping once the semis
+    resolve real teams into them.
+    """
     cfg = _validation_config(tournament)
     tz = _tournament_tz(tournament)
     reqs, preoccupied, linked = build_schedule_inputs(
@@ -128,6 +156,11 @@ def validate_slot_changes(
         dt, venue = current.get(r.id, (None, ""))
         if dt is not None:
             assignments[r.id] = (_local(dt, tz), venue)
+    baseline = validate_schedule(
+        dict(assignments), reqs, cfg, preoccupied=preoccupied, linked=linked,
+    )
+    pre_existing = {_violation_identity(v) for v in baseline}
+
     changed = {str(mid): slot for mid, slot in changes.items()}
     assignments.update(changed)
 
@@ -169,7 +202,10 @@ def validate_slot_changes(
             return True
         return v.get("venue") in venues and at[:10] in days
 
-    return [v for v in violations if relevant(v)]
+    return [
+        v for v in violations
+        if relevant(v) and _violation_identity(v) not in pre_existing
+    ]
 
 
 def reschedule_match(

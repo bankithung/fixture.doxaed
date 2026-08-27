@@ -8,6 +8,8 @@ import { t } from "@/lib/t";
 import {
   applyParticipationFilters,
   EMPTY_PARTICIPATION_FILTERS,
+  EVENT_FILTER_VALUES,
+  KIND_FILTER_VALUES,
   participationFacets,
   type ParticipationFilters,
   type ParticipationRow,
@@ -27,17 +29,6 @@ import {
 /** Lists longer than this get their own search box. */
 const SEARCH_THRESHOLD = 8;
 
-const EVENT_VALUES: { value: string; label: string }[] = [
-  { value: "multi", label: "In two or more" },
-  { value: "cross_sport", label: "In two or more sports" },
-  { value: "one", label: "In exactly one" },
-  { value: "none", label: "Not entered yet" },
-];
-
-const KIND_VALUES: { value: string; label: string }[] = [
-  { value: "student", label: "Students" },
-  { value: "teacher", label: "Teachers" },
-];
 
 type Pane = "events" | "kind" | "sport" | "competition" | "school";
 
@@ -90,8 +81,8 @@ export function ParticipationFilterDrawer({
         ),
       }));
     return {
-      events: build("events", EVENT_VALUES),
-      kind: build("kind", KIND_VALUES),
+      events: build("events", EVENT_FILTER_VALUES),
+      kind: build("kind", KIND_FILTER_VALUES),
       sport: build("sport", facets.sports),
       competition: build(
         "competition",

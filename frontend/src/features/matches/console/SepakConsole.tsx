@@ -26,6 +26,7 @@ import {
   setTargets,
   setsWon,
   type SetRow,
+  winningScore,
 } from "./shared";
 import { changeEndsPrompt, serveOfTurn, serveTurn, type ServeRules } from "./serve";
 import { useAnnotate, useFirstServer, usePointKeys } from "./hooks";
@@ -150,8 +151,13 @@ export function SepakConsole({
     mutationFn: (v: { event_id: string }) =>
       liveApi.recordSetScores(matchId, {
         set_scores: setRows
-          .filter(([h, a]) => h !== "" && a !== "")
-          .map(([h, a]) => [Number(h), Number(a)]),
+          // A game is PLAYED when either side has a figure — a side that did
+          // not score is 0, not unknown. Requiring both cells dropped every
+          // whitewash game from the payload, so an 11-0, 0-11, 11-0, 0-11,
+          // 11-0 match reached the server as ONE game and was refused with
+          // "the games do not match the best-of rule" (owner 2026-08-27).
+          .filter(([h, a]) => h !== "" || a !== "")
+          .map(([h, a]) => [Number(h || 0), Number(a || 0)]),
         event_id: v.event_id,
       }),
     onSuccess: () => {
@@ -174,8 +180,13 @@ export function SepakConsole({
     mutationFn: (v: { event_id: string }) =>
       liveApi.amendSetResult(matchId, {
         set_scores: amendRows
-          .filter(([h, a]) => h !== "" && a !== "")
-          .map(([h, a]) => [Number(h), Number(a)]),
+          // A game is PLAYED when either side has a figure — a side that did
+          // not score is 0, not unknown. Requiring both cells dropped every
+          // whitewash game from the payload, so an 11-0, 0-11, 11-0, 0-11,
+          // 11-0 match reached the server as ONE game and was refused with
+          // "the games do not match the best-of rule" (owner 2026-08-27).
+          .filter(([h, a]) => h !== "" || a !== "")
+          .map(([h, a]) => [Number(h || 0), Number(a || 0)]),
         reason: amendReason.trim(),
         event_id: v.event_id,
       }),
@@ -294,16 +305,40 @@ export function SepakConsole({
       }
     }, 500);
   };
-  const setSide = (i: number, sideIdx: 0 | 1, value: string) => {
-    const next = setRows.map((r, j) =>
-      j === i ? ((sideIdx === 0 ? [value, r[1]] : [r[0], value]) as SetRow) : r,
-    );
+  const setSide = (
+    i: number,
+    sideIdx: 0 | 1,
+    value: string,
+    { zeroOther = false }: { zeroOther?: boolean } = {},
+  ) => {
+    const next = setRows.map((r, j) => {
+      if (j !== i) return r;
+      // Scoring one side starts the game for BOTH: the other side is on nought,
+      // not unknown. Leaving it blank is what made a whitewash look unplayed —
+      // it read "Not needed", never locked the board, and was dropped from the
+      // recorded result (owner 2026-08-27: "by default all marks should be
+      // zero"). Only a tap zeroes the partner; typing in the editor does not.
+      const other = zeroOther && r[sideIdx === 0 ? 1 : 0] === "" ? "0" : null;
+      return (
+        sideIdx === 0
+          ? [value, other ?? r[1]]
+          : [other ?? r[0], value]
+      ) as SetRow;
+    });
     setSetRows(next);
     schedulePush(next);
   };
   const bump = (i: number, sideIdx: 0 | 1, delta: number) => {
     const cur = Number(setRows[i]?.[sideIdx] || 0);
-    setSide(i, sideIdx, String(Math.max(0, cur + delta)));
+    // A point above the score that WINS the set was never played, so the
+    // board refuses it — the same ceiling the server applies. Belt and
+    // braces behind the between-sets lock, and it also bounds the editor.
+    const other = Number(setRows[i]?.[sideIdx === 0 ? 1 : 0] || 0);
+    const rule = setTargets(match.scoring ?? null, i + 1 === bestOf);
+    const ceiling = winningScore(other, rule.points, rule.winBy, rule.cap);
+    setSide(i, sideIdx, String(Math.min(ceiling, Math.max(0, cur + delta))), {
+      zeroOther: true,
+    });
   };
 
   // The PRIMARY interaction: the Point button scores the rally, then a

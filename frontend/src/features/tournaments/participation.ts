@@ -89,6 +89,21 @@ export interface ParticipationFilters {
   events: EventsFilter;
 }
 
+/** The "how many events" choices, and the kinds — ONE list, so the filter
+ * drawer, the active-filter summary and the printed document's "Filters
+ * applied" line can never word the same filter three ways. */
+export const EVENT_FILTER_VALUES: { value: EventsFilter; label: string }[] = [
+  { value: "multi", label: "In two or more" },
+  { value: "cross_sport", label: "In two or more sports" },
+  { value: "one", label: "In exactly one" },
+  { value: "none", label: "Not entered yet" },
+];
+
+export const KIND_FILTER_VALUES: { value: string; label: string }[] = [
+  { value: "student", label: "Students" },
+  { value: "teacher", label: "Teachers" },
+];
+
 export const EMPTY_PARTICIPATION_FILTERS: ParticipationFilters = {
   q: "",
   kind: "",

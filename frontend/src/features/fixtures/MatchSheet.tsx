@@ -101,14 +101,23 @@ function TeamCell({
   const link = (
     <Link
       to={routes.publicTeam(slug, id, side.id)}
+      title={side.name}
       className={cn(
         // Above the row's stretched match link, so a name still opens its team.
         "pointer-events-auto relative z-10 flex w-fit max-w-full items-center gap-1.5 rounded-sm hover:text-primary hover:underline",
         winner ? "font-semibold text-foreground" : "",
       )}
     >
-      <TeamCrest src={side.crest} name={side.name} size="xs" />
-      <span className="truncate">{side.name}</span>
+      {/* The crest keeps its size; only the name gives way. */}
+      <span className="shrink-0">
+        <TeamCrest src={side.crest} name={side.name} size="xs" />
+      </span>
+      {/* `truncate` alone does nothing to a flex item: its default
+          min-width:auto refuses to shrink below the text, so a long school
+          name spilled out of its column and ran into the score instead of
+          ending in an ellipsis (owner 2026-08-27). `min-w-0` is what lets it
+          give way; the title carries the full name. */}
+      <span className="min-w-0 truncate">{side.name}</span>
     </Link>
   );
   if (!rosters) return link;
@@ -216,34 +225,29 @@ export function MatchSheet({
     {
       key: "no",
       label: t("No"),
-      cls: "w-12 text-left",
+      cls: "w-10 text-left",
       // The number is counted within its own competition (the way the draw
       // numbers it), so three different M4s can share one court's sheet —
       // which is exactly why the competition sits in the next column and is
       // never hidden.
       title: t("Match number within its competition"),
     },
-    ...(showDay ? [{ key: "day", label: t("Day"), cls: "w-24 text-left" }] : []),
-    { key: "time", label: t("Time"), cls: "w-16 text-left" },
+    ...(showDay ? [{ key: "day", label: t("Day"), cls: "w-20 text-left" }] : []),
+    { key: "time", label: t("Time"), cls: "w-14 text-left" },
     ...(showCourt
-      ? [{ key: "court", label: t("Court"), cls: "w-28 text-left" }]
+      ? [{ key: "court", label: t("Court"), cls: "w-24 text-left" }]
       : []),
     ...(showCompetition
-      ? [{ key: "event", label: t("Competition"), cls: "w-52 text-left" }]
+      ? [{ key: "event", label: t("Competition"), cls: "w-44 text-left" }]
       : []),
-    {
-      key: "home",
-      label: t("Home"),
-      cls: rosters ? "min-w-[14rem] text-left" : "min-w-[9rem] text-left",
-    },
-    {
-      key: "away",
-      label: t("Away"),
-      cls: rosters ? "min-w-[14rem] text-left" : "min-w-[9rem] text-left",
-    },
-    { key: "score", label: t("Score"), cls: "w-24 text-right" },
-    { key: "winner", label: t("Winner"), cls: "w-40 text-left" },
-    { key: "status", label: t("Status"), cls: "w-28 text-left" },
+    // The two name columns are the only ones without a width: under
+    // table-fixed they split whatever the fixed columns leave, so the sheet
+    // spends its width on the names rather than on empty left-hand gutters.
+    { key: "home", label: t("Home"), cls: "text-left" },
+    { key: "away", label: t("Away"), cls: "text-left" },
+    { key: "score", label: t("Score"), cls: "w-20 text-right" },
+    { key: "winner", label: t("Winner"), cls: "w-32 text-left" },
+    { key: "status", label: t("Status"), cls: "w-24 text-left" },
   ];
 
   return (
@@ -254,7 +258,13 @@ export function MatchSheet({
       <table
         data-testid={`${idScope}-table`}
         className={cn(
-          "w-full border-collapse text-[clamp(0.75rem,0.66rem+0.28vw,1rem)]",
+          // FIXED layout (owner 2026-08-27). Under auto layout a long school
+          // name ("St. Thomas Higher Secondary School, Nagagaon ST-1") grew
+          // its own column and squeezed Score and Winner until they collided,
+          // while the narrow left-hand columns kept space nobody needed. With
+          // table-fixed the widths below are the widths, so a long name
+          // truncates inside its cell instead of shoving the row about.
+          "w-full table-fixed border-collapse text-[clamp(0.75rem,0.66rem+0.28vw,1rem)]",
           showCompetition ? "min-w-[62rem]" : "min-w-[46rem]",
         )}
       >
@@ -353,7 +363,7 @@ export function MatchSheet({
                     "px-3 py-2",
                     // A team sheet is a block, so its cell tops out with the
                     // name; a bare team name still centres on its row.
-                    rosters ? "align-top" : "max-w-0 align-middle",
+                    rosters ? "align-top" : "align-middle",
                   )}
                 >
                   <TeamCell
@@ -368,7 +378,7 @@ export function MatchSheet({
                   data-col="away"
                   className={cn(
                     "px-3 py-2",
-                    rosters ? "align-top" : "max-w-0 align-middle",
+                    rosters ? "align-top" : "align-middle",
                   )}
                 >
                   <TeamCell
@@ -382,18 +392,22 @@ export function MatchSheet({
                 <td data-col="score" className="px-3 py-2 text-right align-middle">
                   <ScoreCell m={m} />
                 </td>
-                <td data-col="winner" className="max-w-0 px-3 py-2 align-middle">
+                <td data-col="winner" className="px-3 py-2 align-middle">
                   {win ? (
                     <span
                       data-testid={`${idScope}-winner-${m.id}`}
                       title={win.name}
-                      className="flex items-center gap-1.5 truncate whitespace-nowrap text-[0.85em] font-semibold"
+                      className="flex items-center gap-1.5 text-[0.85em] font-semibold"
                     >
-                      <TeamCrest src={win.crest} name={win.name} size="xs" />
+                      <span className="shrink-0">
+                        <TeamCrest src={win.crest} name={win.name} size="xs" />
+                      </span>
                       {/* The full name, truncated: a parent scanning "who
                           won" recognises "Holy Cross Higher..." and does not
-                          recognise "HCHSS". The title carries the rest. */}
-                      <span className="truncate">{win.name}</span>
+                          recognise "HCHSS". The title carries the rest.
+                          `min-w-0` is what actually lets it shrink — see the
+                          note in TeamCell. */}
+                      <span className="min-w-0 truncate">{win.name}</span>
                     </span>
                   ) : (
                     <span className="text-[0.85em] text-muted-foreground">

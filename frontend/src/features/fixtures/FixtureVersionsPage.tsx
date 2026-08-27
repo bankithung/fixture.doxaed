@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
+import { matchNumbers } from "@/features/fixtures/publicTournament";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { humanizeLeaf } from "@/features/controlroom/format";
@@ -296,6 +297,11 @@ function VersionSheet({
 }: {
   matches: FixtureVersionMatch[];
 }): React.ReactElement {
+  // A snapshot is a frozen fixture, so it is numbered by the SAME rule every
+  // live surface uses (owner 2026-08-27) — the stored rows carry no
+  // `fixture_no`, so `matchNumbers` falls back to the draw order it was
+  // captured in, which is the order that produced those numbers.
+  const nos = matchNumbers(matches);
   const byLeaf = new Map<string, FixtureVersionMatch[]>();
   for (const m of matches) {
     const k = m.leaf_key || "_";
@@ -338,11 +344,14 @@ function VersionSheet({
               </thead>
               <tbody className="divide-y divide-border">
                 {[...ms]
-                  .sort((a, b) => a.match_no - b.match_no)
+                  .sort(
+                    (a, b) =>
+                      (nos.get(a.id) ?? a.match_no) - (nos.get(b.id) ?? b.match_no),
+                  )
                   .map((m) => (
                     <tr key={m.id}>
                       <td className="px-3 py-1.5 font-tabular text-xs text-muted-foreground">
-                        {m.match_no}
+                        {nos.get(m.id) ?? m.match_no}
                       </td>
                       <td className="px-3 py-1.5 text-xs text-muted-foreground">
                         {m.stage} {m.round_no}

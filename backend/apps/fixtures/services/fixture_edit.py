@@ -49,7 +49,10 @@ def _tournament_tz(tournament):
     return ZoneInfo(getattr(tournament, "time_zone", None) or "Asia/Kolkata")
 
 
-def _serialize_match(m, crests: dict[str, str] | None = None) -> dict[str, Any]:
+def _serialize_match(
+    m, crests: dict[str, str] | None = None,
+    fixture_nos: dict[str, int] | None = None,
+) -> dict[str, Any]:
 
     def src(side) -> dict[str, Any] | None:
         return dict(side) if side else None
@@ -67,6 +70,10 @@ def _serialize_match(m, crests: dict[str, str] | None = None) -> dict[str, Any]:
     return {
         "id": str(m.id),
         "match_no": m.match_no,
+        # What the fixture CALLS this match (numbering.py) — the editor prints
+        # this, not the tournament-wide `match_no`, so "Winner of M5" means the
+        # same game here as on the public sheet.
+        "fixture_no": (fixture_nos or {}).get(str(m.id)),
         "stage": m.stage,
         "stage_no": m.stage_no,
         "group_label": m.group_label,
@@ -122,7 +129,10 @@ def editable_fixture(tournament) -> dict[str, Any]:
     crest_urls = crest_map(
         [tm for m in matches for tm in (m.home_team, m.away_team) if tm]
     )
-    rows = [_serialize_match(m, crest_urls) for m in matches]
+    from apps.matches.services.numbering import number_rows
+
+    fixture_nos = number_rows(matches)
+    rows = [_serialize_match(m, crest_urls, fixture_nos) for m in matches]
 
     # Dropdown options: each competition leaf offers ITS OWN registered teams.
     teams_by_leaf: dict[str, list[dict[str, Any]]] = {}

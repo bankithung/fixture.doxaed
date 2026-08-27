@@ -336,7 +336,13 @@ export interface MatchRow {
   stage: string;
   group_label: string;
   round_no: number;
+  /** The draw's tournament-wide emission sequence. NOT the number printed on
+   * a sheet — see `fixture_no`. */
   match_no: number;
+  /** THE number this match is known by: counted within its own competition,
+   * stamped by the server (`matches/services/numbering.py`) so every page
+   * prints the same one. Null only on a payload built before it existed. */
+  fixture_no?: number | null;
   status: string;
   home_team: MiniTeam | null;
   away_team: MiniTeam | null;
@@ -369,6 +375,10 @@ export interface MatchRow {
    * group_position → "Group A #1", winner_of/loser_of → another match. */
   home_source?: MatchSource | null;
   away_source?: MatchSource | null;
+  /** This match's own length in minutes, resolved server-side from the
+   * competition/sport/profile chain; null when nothing sets one. The
+   * printable fixture needs it to show an end time beside the start. */
+  duration_minutes?: number | null;
 }
 
 /** A typed match-dependency pointer (home_source/away_source, invariant 9). */
@@ -607,6 +617,9 @@ export interface PublicScheduleMatch {
   group_label: string;
   round_no: number;
   match_no: number;
+  /** The number the fixture calls this match by, counted within its own
+   * competition (server-stamped — see `matches/services/numbering.py`). */
+  fixture_no?: number | null;
   status: string;
   /** Tournament-local date the match falls on; null = unscheduled. */
   day: string | null;

@@ -59,6 +59,36 @@ def sport_profile(sport_key: str | None) -> dict | None:
     return SPORT_PROFILES.get(_norm(sport_key))
 
 
+def match_duration_minutes(
+    tournament, sport_key: str | None, leaf_key: str | None = "",
+) -> int | None:
+    """How long ONE match of this competition runs, or None when nothing says.
+
+    Precedence is the scheduler's: the per-competition override
+    (``draw_config[leaf].match_duration_minutes``, layered over ``*``), then
+    the per-sport scheduling override, then the sport profile. Lifted out of
+    ``scheduler.apply_schedule`` so the printable fixture and the calendar
+    cannot disagree about how long a table-tennis game is — an END time on
+    paper that the scheduler never planned is worse than no end time at all.
+    """
+    from apps.fixtures.services.draw_config import effective_draw_config
+
+    if leaf_key:
+        d = effective_draw_config(tournament, leaf_key).get(
+            "match_duration_minutes"
+        )
+        if d:
+            return int(d)
+    for s in tournament.sports or []:
+        if s.get("key") == sport_key:
+            o = (s.get("scheduling") or {}).get("duration_minutes")
+            if o:
+                return int(o)
+            break
+    prof = sport_profile(sport_key)
+    return int(prof["duration_minutes"]) if prof else None
+
+
 def scoring_rules(sport_key: str | None, override: dict | None = None) -> dict | None:
     """The set-scoring rules for a sport, or None if it's not a set-based sport
     (→ caller falls back to goal scoring). An organizer override with
@@ -114,6 +144,40 @@ def _set_params(rules: dict, deciding: bool) -> tuple[int, int, int | None]:
     return points, win_by, cap
 
 
+def winning_score(lo: int, points: int, win_by: int, cap: int | None) -> int:
+    """The ONLY score a set winner can hold against ``lo`` points.
+
+    A set ENDS the instant it is won, so a higher score never happened: a
+    table-tennis game against 7 finishes 11-7, never 12-7, and a sepak set
+    against 13 finishes 15-13, never 16-13. Past the deuce threshold the
+    winner is exactly two clear (``lo + win_by``), and a cap ends the deuce
+    early — that is where a one-point margin becomes legal (17-16, 25-24).
+    """
+    target = points if lo <= points - win_by else lo + win_by
+    if cap:
+        target = min(target, int(cap))
+    return target
+
+
+def set_state(h: int, a: int, points: int, win_by: int, cap: int | None) -> str:
+    """``"in_progress"`` | ``"won"`` | ``"illegal"`` for one set's points.
+
+    The live tap board needs the difference: 11-10 in table tennis is a legal
+    score mid-deuce, 12-10 ends the game, and 13-10 is a point that could not
+    have been played. Ties are in progress (10-10 is deuce) unless the cap has
+    already been reached, where no further tie exists.
+    """
+    if h < 0 or a < 0:
+        return "illegal"
+    hi, lo = max(h, a), min(h, a)
+    if h == a:
+        return "illegal" if cap and hi >= int(cap) else "in_progress"
+    expected = winning_score(lo, points, win_by, cap)
+    if hi > expected:
+        return "illegal"
+    return "won" if hi == expected else "in_progress"
+
+
 def compute_sets(set_scores: list, rules: dict) -> tuple[int, int]:
     """Validate the per-set scores against the rules and return (home_sets,
     away_sets). Sets are validated IN ORDER: the deciding set (entered at
@@ -146,6 +210,13 @@ def compute_sets(set_scores: list, rules: dict) -> tuple[int, int]:
             raise ValidationError("set_below_target")
         if (hi - lo) < win_by and not (cap and hi == int(cap)):
             raise ValidationError("set_not_won_by_margin")
+        # A set stops being played the moment it is won, so a score ABOVE the
+        # winning score is not a result — it is points that were never played
+        # (owner 2026-08-27: the console let a scorer run 12-9, or 99-0, and
+        # every check above passed it). The margin test alone cannot catch
+        # this: 12-9 clears the target and the two-point margin both.
+        if hi > winning_score(lo, points, win_by, cap):
+            raise ValidationError("set_score_overshoot")
         if h > a:
             home_sets += 1
         else:
@@ -177,9 +248,8 @@ def sets_won_lenient(set_scores: list, rules: dict) -> tuple[int, int]:
         deciding = home_sets == away_sets == need_minus_one
         points, win_by, cap = _set_params(rules, deciding)
         hi, lo = max(h, a), min(h, a)
-        won = hi >= points and ((hi - lo) >= win_by or (cap and hi >= int(cap)))
-        if not won:
-            continue
+        if hi < winning_score(lo, points, win_by, cap):
+            continue  # still being played (11-10 is deuce, not a win)
         if h > a:
             home_sets += 1
         else:
@@ -240,6 +310,34 @@ def update_set_progress(
         if h < 0 or a < 0:
             raise ValidationError("bad_set_score")
         norm_scores.append([h, a])
+
+    # The tap board used to accept ANY non-negative pair, so a scorer could
+    # keep tapping past the point that ended the game — 99-0 stored fine and
+    # only failed later, at the completion step, with the match already
+    # unplayable (owner 2026-08-27). Every set is now walked in order under
+    # the same rules `compute_sets` applies, with one difference: a set that
+    # is still being played is legal HERE and only here.
+    need = int(rules.get("best_of", 3)) // 2 + 1
+    home_running = away_running = 0
+    for idx, (h, a) in enumerate(norm_scores):
+        if max(home_running, away_running) == need:
+            raise ValidationError("set_after_match_decided")
+        points, win_by, cap = _set_params(
+            rules, home_running == away_running == need - 1
+        )
+        state = set_state(h, a, points, win_by, cap)
+        if state == "illegal":
+            raise ValidationError("set_score_overshoot")
+        if state == "in_progress":
+            # Only the set being played may be unfinished; an earlier one
+            # left hanging means the board skipped a game.
+            if idx != len(norm_scores) - 1:
+                raise ValidationError("unfinished_set_before_last")
+            continue
+        if h > a:
+            home_running += 1
+        else:
+            away_running += 1
 
     home_sets, away_sets = sets_won_lenient(norm_scores, rules)
 

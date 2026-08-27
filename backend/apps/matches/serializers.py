@@ -45,16 +45,60 @@ class MatchSerializer(serializers.ModelSerializer):
     home_team = serializers.SerializerMethodField()
     away_team = serializers.SerializerMethodField()
     scoring = serializers.SerializerMethodField()
+    duration_minutes = serializers.SerializerMethodField()
+    fixture_no = serializers.SerializerMethodField()
 
     class Meta:
         model = Match
         fields = [
             "id", "stage", "stage_no", "group_label", "round_no", "match_no",
+            "fixture_no",
             "status", "home_team", "away_team", "home_score", "away_score",
             "home_pens", "away_pens", "scheduled_at", "locked_at", "called_at",
             "current_period", "sport", "set_scores", "leaf_key", "venue",
-            "scoring", "home_source", "away_source",
+            "scoring", "home_source", "away_source", "duration_minutes",
         ]
+
+    def get_duration_minutes(self, obj):
+        """This match's own length in minutes, or null when nothing sets one.
+
+        The printable fixture needs an END time beside the start, and only the
+        tournament knows how long one of ITS games runs. Resolved by the same
+        helper the scheduler uses, and memoised per (sport, competition) so a
+        92-match list does not re-read the draw config 92 times."""
+        from apps.matches.services.set_scoring import match_duration_minutes
+
+        cache = getattr(self, "_duration_cache", None)
+        if cache is None:
+            cache = self._duration_cache = {}
+        key = (obj.tournament_id, obj.sport or "", obj.leaf_key or "")
+        if key not in cache:
+            cache[key] = match_duration_minutes(
+                obj.tournament, obj.sport, obj.leaf_key or "",
+            )
+        return cache[key]
+
+    def get_fixture_no(self, obj):
+        """The number the FIXTURE calls this match by — counted within its own
+        competition, and the SAME number every other surface prints (see
+        `services/numbering.py`). `match_no` stays what it always was: the
+        tournament-wide emission sequence the draw hands out.
+
+        Memoised per tournament, so a 92-match list costs one extra query."""
+        from apps.matches.services.numbering import fixture_numbers
+
+        # A list view that builds ONE serializer per row (the ops board does)
+        # would otherwise pay a query per match, so it hands the whole map in
+        # through the context. Everything else memoises per serializer.
+        given = self.context.get("fixture_nos")
+        if isinstance(given, dict):
+            return given.get(str(obj.id))
+        cache = getattr(self, "_fixture_no_cache", None)
+        if cache is None:
+            cache = self._fixture_no_cache = {}
+        if obj.tournament_id not in cache:
+            cache[obj.tournament_id] = fixture_numbers(obj.tournament_id)
+        return cache[obj.tournament_id].get(str(obj.id))
 
     def get_scoring(self, obj):
         """Resolved set-scoring rules (override → sport profile), or None for

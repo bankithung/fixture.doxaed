@@ -141,6 +141,7 @@ export function TeamName({
   return (
     <Link
       to={routes.publicTeam(slug, id, side.id)}
+      title={side.name}
       // Sits above the row's stretched match link (which covers the row), so
       // a team name still opens that team's page. `w-fit` keeps the link only
       // as wide as its content, leaving the rest of the row to that link.
@@ -150,11 +151,18 @@ export function TeamName({
       )}
     >
       <TeamCrest src={side.crest} name={side.name} size={crestSize} />
-      {/* Truncation lives on the name, not the row: the crest never shrinks. */}
+      {/* Truncation lives on the name, not the row: the crest never shrinks.
+          The hero shows the name in FULL (owner 2026-08-26), and it fits on
+          one line whenever it can — but `whitespace-nowrap` forced one line
+          with no way to END, so "St. Thomas Higher Secondary School,
+          Nagagaon ST-1" ran out of its grid cell and over the scoreline
+          beside it (owner 2026-08-27). Dropping nowrap keeps every short name
+          on a single line and lets only the long ones fall to a second,
+          which is the one way to be both complete and inside the box. */}
       <span
         className={cn(
           "group-hover:underline",
-            wrap ? "min-w-0 [overflow-wrap:anywhere] whitespace-nowrap" : "truncate",
+          wrap ? "min-w-0 [overflow-wrap:anywhere]" : "truncate",
         )}
       >
         {side.name}

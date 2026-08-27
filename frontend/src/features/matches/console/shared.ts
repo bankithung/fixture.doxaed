@@ -68,9 +68,14 @@ export function setsWon(rows: SetRow[], scoring: SetScoring): [number, number] {
   let h = 0;
   let a = 0;
   for (const [hs, as] of rows) {
-    if (hs === "" || as === "") continue;
-    const hn = Number(hs);
-    const an = Number(as);
+    // A row is "not played" only when BOTH cells are blank. A side that has
+    // not scored yet is 0, not unknown — skipping the whole row on one blank
+    // cell meant a game running 11-0 was never seen as WON, so the console
+    // never locked the Point button and a scorer could tap on to 32-0
+    // (owner 2026-08-27, reported from the live console).
+    if (hs === "" && as === "") continue;
+    const hn = Number(hs === "" ? 0 : hs);
+    const an = Number(as === "" ? 0 : as);
     if (!Number.isFinite(hn) || !Number.isFinite(an) || hn === an) continue;
     const deciding = h === a && h === needMinusOne;
     const d = (deciding ? scoring?.deciding : null) as {
@@ -125,6 +130,21 @@ export function setTargets(
     winBy: d?.win_by ?? scoring?.win_by ?? 2,
     cap: d?.cap ?? scoring?.cap ?? null,
   };
+}
+
+/** The ONLY score a side can hold once it has WON a set against `lo` points.
+ * A set ends the instant it is won, so anything above this never happened.
+ * Mirrors the backend's `winning_score` in
+ * apps/matches/services/set_scoring.py — keep the two in step. */
+export function winningScore(
+  lo: number,
+  points: number,
+  winBy: number,
+  cap: number | null,
+): number {
+  if (points <= 0) return Number.POSITIVE_INFINITY;
+  const target = lo <= points - winBy ? points : lo + winBy;
+  return cap != null && cap > 0 ? Math.min(target, cap) : target;
 }
 
 /** Side whose NEXT point wins the current set (0 home, 1 away), else null.

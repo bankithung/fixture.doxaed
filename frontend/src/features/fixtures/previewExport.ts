@@ -36,11 +36,24 @@ export interface PreviewExportMeta {
   groupLabel: string;
   /** Matches still without a time, called out on the cover line. */
   unplaced: number;
+  /**
+   * Is this an unpublished trial run? Defaults to true, because these
+   * documents were born in the dry-run preview. The PUBLISHED fixture prints
+   * through the same layouts and must NOT carry the trial-run warning — an
+   * organiser handing out a sheet stamped "not published yet" is being told
+   * the opposite of the truth (owner 2026-08-27).
+   */
+  draft?: boolean;
 }
 
 /** The trial-run warning every preview document carries, with the count of
  * matches that still have no time when there are any. */
 export function draftNote(meta: PreviewExportMeta): string {
+  if (meta.draft === false) {
+    return meta.unplaced
+      ? `${meta.unplaced} ${t("match(es) still have no time.")}`
+      : "";
+  }
   const base = t("Trial run. This schedule is not published yet.");
   return meta.unplaced
     ? `${base} ${meta.unplaced} ${t("match(es) still have no time.")}`
@@ -184,7 +197,7 @@ export function previewPdfHtml({
 </style></head><body>
   ${docHeader({
     title: meta.title,
-    subtitle: `${t("Fixture preview")} · ${t("grouped by")} ${meta.groupLabel.toLowerCase()}`,
+    subtitle: `${meta.draft === false ? t("Published fixture") : t("Fixture preview")} · ${t("grouped by")} ${meta.groupLabel.toLowerCase()}`,
     scope,
     filterSummary: meta.filterSummary,
     note: draftNote(meta),
@@ -316,7 +329,7 @@ export function previewCourtGridHtml({
     subtitle: t("Every court, one view"),
     scope: `${meta.shown} ${t("matches")}`,
     filterSummary: meta.filterSummary,
-    note: t("Trial run. This schedule is not published yet."),
+    note: draftNote(meta),
   })}
   ${body || `<p class="meta">${esc(t("No matches have a time yet."))}</p>`}
   ${

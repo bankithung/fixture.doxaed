@@ -286,9 +286,20 @@ export function buildRows(
   /** `{team_id: crest URL}`. Optional, and empty is a fine answer: a preview
    * whose teams have no badges reads exactly as it always did. */
   crests: ReadonlyMap<string, string> = new Map(),
+  /**
+   * The numbering to print, when the caller already HAS one.
+   *
+   * A previewed draw has no numbers of its own, so `matchNumbers` derives them
+   * off the emission order carried in each `ref`. A COMMITTED fixture does:
+   * `Match.match_no`, and every other surface prints from it. Re-deriving it
+   * here would tie-break on a uuid and hand the same match two different
+   * numbers on two documents (owner 2026-08-27), so the committed path passes
+   * `publicTournament.matchNumbers` in instead.
+   */
+  numbering?: ReadonlyMap<string, number>,
 ): PreviewRow[] {
   const unplaced = new Set(unscheduled);
-  const numbers = matchNumbers(matches);
+  const numbers = numbering ?? matchNumbers(matches);
   const refLabels = new Map(
     [...numbers].map(([ref, n]) => [ref, `${t("Match")} ${n}`]),
   );

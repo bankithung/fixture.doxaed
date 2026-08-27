@@ -25,7 +25,10 @@ import {
   type FixtureViolation,
   type MiniTeam,
 } from "@/api/tournaments";
-import type { RosterIndex } from "@/features/fixtures/publicTournament";
+import {
+  matchNumbers,
+  type RosterIndex,
+} from "@/features/fixtures/publicTournament";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -420,10 +423,12 @@ export function EditFixturePage(): React.ReactElement {
     return [...set].sort();
   }, [merged]);
 
-  const matchNos = useMemo(
-    () => new Map(merged.map((m) => [m.id, m.match_no] as const)),
-    [merged],
-  );
+  // The FIXTURE's numbering, not the raw `match_no`: every other surface
+  // counts a match within its own competition (the public sheet, the bracket,
+  // the printed court grid), so an editor that printed the tournament-wide
+  // sequence said "Winner of M40" about the game everyone else calls M5
+  // (owner 2026-08-27). One rule, one number, everywhere.
+  const matchNos = useMemo(() => matchNumbers(merged), [merged]);
 
   /** Team -> students, in the shape BracketView's detailed cards read. */
   const rosterIndex: RosterIndex = useMemo(() => {
@@ -731,6 +736,7 @@ export function EditFixturePage(): React.ReactElement {
               (a.group_label || "").localeCompare(b.group_label || "") ||
               (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""),
             )}
+            matchNos={matchNos}
             widthsId={`${activeSport}:${sheet.courtId || "none"}`}
             stored={storedWidths}
             onStore={storeWidths}
@@ -852,6 +858,7 @@ export function EditFixturePage(): React.ReactElement {
 function CourtSheet({
   sheetName,
   matches,
+  matchNos,
   widthsId,
   stored,
   onStore,
@@ -867,6 +874,9 @@ function CourtSheet({
 }: {
   sheetName: string;
   matches: FixtureEditMatch[];
+  /** The fixture's own numbering (see `matchNumbers`), for the No column and
+   * every pointer label — never the raw tournament-wide `match_no`. */
+  matchNos: Map<string, number>;
   widthsId: string;
   stored: Record<string, number[]>;
   onStore: (id: string, widths: number[]) => void;
@@ -977,7 +987,9 @@ function CourtSheet({
                     hasNew && "bg-destructive/5",
                   )}
                 >
-                  <td className="px-3 py-1.5 font-tabular">{m.match_no}</td>
+                  <td className="px-3 py-1.5 font-tabular">
+                    {matchNos.get(m.id) ?? m.match_no}
+                  </td>
                   <td className="px-3 py-1.5">
                     <Select
                       size="sm"
@@ -1026,7 +1038,7 @@ function CourtSheet({
                       />
                     ) : (
                       <span className="text-xs italic text-muted-foreground">
-                        {sideWaiting(m, "home", matchNosOf(matches))}
+                        {sideWaiting(m, "home", matchNos)}
                       </span>
                     )}
                     {showStudents && m.home_team ? (
@@ -1051,7 +1063,7 @@ function CourtSheet({
                       />
                     ) : (
                       <span className="text-xs italic text-muted-foreground">
-                        {sideWaiting(m, "away", matchNosOf(matches))}
+                        {sideWaiting(m, "away", matchNos)}
                       </span>
                     )}
                     {showStudents && m.away_team ? (
@@ -1151,13 +1163,6 @@ function MatchRuleStatus({
   );
 }
 
-/** match_no lookup scoped to one sheet — enough for pointer labels there. */
-function matchNosOf(
-  matches: FixtureEditMatch[],
-): Map<string, number> {
-  return new Map(matches.map((m) => [m.id, m.match_no] as const));
-}
-
 function sideWaiting(
   m: FixtureEditMatch,
   side: "home" | "away",
@@ -1211,7 +1216,7 @@ function KnockoutEditorDialog({
       ariaLabel={t("Edit match")}
     >
       <DialogHeader>
-        <DialogTitle>{`M${match.match_no}`}</DialogTitle>
+        <DialogTitle>{`M${matchNos.get(match.id) ?? match.match_no}`}</DialogTitle>
         <DialogDescription>
           {match.home_team?.name ?? sideWaiting(match, "home", matchNos)}
           {" vs "}
