@@ -154,7 +154,7 @@ export function TeamName({
       <span
         className={cn(
           "group-hover:underline",
-          wrap ? "min-w-0 [overflow-wrap:anywhere]" : "truncate",
+            wrap ? "min-w-0 [overflow-wrap:anywhere] whitespace-nowrap" : "truncate",
         )}
       >
         {side.name}

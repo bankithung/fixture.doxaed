@@ -100,7 +100,7 @@ const BOARD = {
   // Smaller max so long school names sit on one line; clamp still scales the
   // whole range so a phone at the court and a hall screen both read clean.
   name: "text-[clamp(0.75rem,1.5vw,2rem)]",
-  player: "text-[clamp(0.6rem,1.1vw,1.25rem)]",
+  player: "text-[clamp(0.75rem,1.3vw,1.75rem)]",
   score: "text-[clamp(3.5rem,15vw,16rem)]",
   clock: "text-[clamp(2.5rem,10vw,10rem)]",
   meta: "text-[clamp(0.875rem,1.9vw,2rem)]",
@@ -144,7 +144,7 @@ function BoardSide({
           <span
             key={n}
             className={cn(
-              "max-w-full font-medium leading-tight text-muted-foreground [overflow-wrap:anywhere]",
+              "max-w-full font-semibold leading-tight text-foreground [overflow-wrap:anywhere] whitespace-nowrap",
               BOARD.player,
             )}
           >
