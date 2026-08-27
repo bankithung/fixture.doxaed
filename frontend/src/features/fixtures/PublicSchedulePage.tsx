@@ -196,7 +196,8 @@ function LiveBand({
                     <TeamName
                       side={m.home}
                       crestSize="lg"
-                      className="mx-auto truncate text-sm font-medium sm:mx-0 sm:ml-auto sm:text-base"
+                      wrap
+                      className="mx-auto text-sm font-medium sm:mx-0 sm:ml-auto sm:text-base"
                     />
                     <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
                       {t("Home")}
@@ -230,7 +231,8 @@ function LiveBand({
                     <TeamName
                       side={m.away}
                       crestSize="lg"
-                      className="mx-auto truncate text-sm font-medium sm:mx-0 sm:mr-auto sm:text-base"
+                      wrap
+                      className="mx-auto text-sm font-medium sm:mx-0 sm:mr-auto sm:text-base"
                     />
                     <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
                       {t("Away")}
