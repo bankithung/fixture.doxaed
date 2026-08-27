@@ -319,3 +319,85 @@ describe("ParticipationWorkbench \u00b7 the filters live in a drawer", () => {
     expect(screen.getByTestId("participation-m3")).toBeInTheDocument();
   });
 });
+
+describe("ParticipationWorkbench \u00b7 the printed document", () => {
+  it("prints the rows the filters left, and says which filters those were", async () => {
+    // Owner 2026-08-27: the sheet exported as a spreadsheet only. What the
+    // host carries into the room where the draw is settled is a document.
+    const w = {
+      document: { write: vi.fn(), close: vi.fn() },
+      focus: vi.fn(),
+      print: vi.fn(),
+    };
+    const open = vi.spyOn(window, "open").mockReturnValue(w as unknown as Window);
+    mount();
+    await screen.findByTestId("participation-m1");
+    await userEvent.click(screen.getByTestId("stat-multi"));
+    await userEvent.click(screen.getByTestId("participation-export-pdf"));
+
+    const html = String(w.document.write.mock.calls[0]?.[0] ?? "");
+    expect(html).toContain("Imli Jamir");
+    // m3 is in one event only, so the filter dropped it — and so does the paper.
+    expect(html).not.toContain("Aben Kikon");
+    expect(html).toContain("In two or more");
+    open.mockRestore();
+  });
+
+  it("prints the matrix when the matrix is what is on screen", async () => {
+    const w = {
+      document: { write: vi.fn(), close: vi.fn() },
+      focus: vi.fn(),
+      print: vi.fn(),
+    };
+    const open = vi.spyOn(window, "open").mockReturnValue(w as unknown as Window);
+    mount();
+    await screen.findByTestId("participation-m1");
+    await userEvent.click(screen.getByTestId("participation-view-matrix"));
+    await userEvent.click(screen.getByTestId("participation-export-pdf"));
+
+    expect(String(w.document.write.mock.calls[0]?.[0] ?? "")).toContain(
+      "participation matrix",
+    );
+    open.mockRestore();
+  });
+
+  describe("on a phone", () => {
+    // useBreakpoint reads window.innerWidth through useSyncExternalStore, so a
+    // narrow viewport is all it takes to get the mobile shell under test.
+    beforeEach(() => {
+      vi.stubGlobal("innerWidth", 390);
+    });
+
+    it("pins the Filter button to the bottom of the screen", async () => {
+      // Owner 2026-08-27: "the filter button doesn't stay stuck on the bottom
+      // of the screen but it's placed somewhere below". It was an inline
+      // toolbar button, so on a phone it scrolled away with the list and
+      // stranded you mid-table with no way back to the filters.
+      mount();
+      await screen.findByTestId("participation-cards");
+
+      const bar = screen.getByTestId("participation-bottom-bar");
+      expect(bar).toBeInTheDocument();
+      // `fixed`, not `sticky`: the panel above is a rounded card with
+      // overflow-hidden, which would clip a sticky child instead of pinning it.
+      expect(bar.className).toMatch(/\bfixed\b/);
+      expect(bar.className).toMatch(/bottom-0/);
+      expect(bar.className).not.toMatch(/\bsticky\b/);
+      // The Filter button lives IN the bar, and only there.
+      expect(bar).toContainElement(
+        screen.getByTestId("participation-open-filters"),
+      );
+      expect(screen.getAllByTestId("participation-open-filters")).toHaveLength(1);
+    });
+
+    it("opens the same drawer from the bottom bar", async () => {
+      mount();
+      await screen.findByTestId("participation-cards");
+      await userEvent.click(screen.getByTestId("participation-open-filters"));
+
+      expect(
+        await screen.findByTestId("participation-filter-drawer"),
+      ).toBeInTheDocument();
+    });
+  });
+});

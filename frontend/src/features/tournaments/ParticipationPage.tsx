@@ -7,6 +7,7 @@ import {
   ArrowUp,
   ChevronsUpDown,
   Download,
+  Printer,
   Search,
   SlidersHorizontal,
   UserSquare2,
@@ -31,6 +32,8 @@ import {
   detailColumns,
   detailText,
   EMPTY_PARTICIPATION_FILTERS,
+  EVENT_FILTER_VALUES,
+  KIND_FILTER_VALUES,
   participationCsv,
   participationFacets,
   participationTotals,
@@ -40,6 +43,7 @@ import {
   type ParticipationRow,
   type ParticipationSortKey,
 } from "./participation";
+import { openParticipationPdf } from "./participationExport";
 import { fmtDob, fmtGender } from "./personFormat";
 import { FileChips } from "@/components/ui/FileChips";
 
@@ -290,6 +294,16 @@ export function ParticipationWorkbench({
     if (px) setWidth(key, px);
   };
 
+  // The tournament's NAME, for the printed document's heading — read from the
+  // cache the workspace route already fills, with `enabled: false` so this
+  // page never fires a request of its own for a title. No name, no heading
+  // lie: the document falls back to a plain one.
+  const tournamentQ = useQuery({
+    queryKey: ["tournament", id],
+    queryFn: () => tournamentsApi.get(id),
+    enabled: false,
+  });
+
   // The whole roster in one read: every filter here is a question about the
   // set as a whole ("who is in two"), so paging it server-side would only be
   // able to answer about a page.
@@ -353,6 +367,45 @@ export function ParticipationWorkbench({
     ["events", "kind", "sport", "competition", "school"] as const
   ).filter((k) => filters[k] !== "").length;
 
+  /** What the filters actually left, in words the paper can carry. */
+  const filterSummary = useMemo(() => {
+    const label = (
+      list: readonly { value: string; label: string }[],
+      v: string,
+    ): string => t(list.find((o) => o.value === v)?.label ?? v);
+    return [
+      filters.q.trim(),
+      filters.kind ? label(KIND_FILTER_VALUES, filters.kind) : "",
+      filters.school,
+      filters.sport ? label(facets.sports, filters.sport) : "",
+      filters.competition ? label(facets.competitions, filters.competition) : "",
+      filters.events ? label(EVENT_FILTER_VALUES, filters.events) : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }, [filters, facets]);
+
+  /** The same rows, the same columns, the same view — on paper (owner
+   * 2026-08-27). A spreadsheet is the file you work in; this is the one you
+   * carry into the room where the draw is settled. */
+  const onExportPdf = (): void => {
+    openParticipationPdf({
+      view,
+      rows,
+      columns: detail,
+      // The matrix prints the competitions it is SHOWING, which after
+      // filtering is not every competition the event runs.
+      competitions: columns,
+      meta: {
+        title: tournamentQ.data?.name || t("Participation"),
+        filterSummary,
+        shown: rows.length,
+        total: all.length,
+        totals,
+      },
+    });
+  };
+
   const onExport = (): void => {
     const csv = participationCsv(rows, facets.competitions, detail);
     const url = URL.createObjectURL(
@@ -389,32 +442,40 @@ export function ParticipationWorkbench({
           className="h-8 pl-7 text-xs"
         />
       </div>
-      <Button
-        type="button"
-        size="sm"
-        variant={drawerCount ? "secondary" : "outline"}
-        data-testid="participation-open-filters"
-        onClick={() => setDrawer(true)}
-        className="shrink-0 px-2.5 text-xs"
-      >
-        <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
-        {t("Filter")}
-        {drawerCount ? (
-          <span className="rounded bg-primary px-1.5 font-tabular text-[0.6875rem] text-primary-foreground">
-            {drawerCount}
-          </span>
-        ) : null}
-      </Button>
-      {filtersOn ? (
-        <button
-          type="button"
-          data-testid="participation-clear"
-          onClick={() => setFilters(EMPTY_PARTICIPATION_FILTERS)}
-          className="shrink-0 whitespace-nowrap px-1 text-xs font-medium text-primary hover:underline"
-        >
-          {t("Clear filters")}
-        </button>
-      ) : null}
+      {/* On a phone these live in the bottom bar instead — one thumb-reachable
+          door, always on screen. Rendering them here as well would be the same
+          control twice, and the copy in the toolbar is the one that scrolls
+          away. */}
+      {isMobile ? null : (
+        <>
+          <Button
+            type="button"
+            size="sm"
+            variant={drawerCount ? "secondary" : "outline"}
+            data-testid="participation-open-filters"
+            onClick={() => setDrawer(true)}
+            className="shrink-0 px-2.5 text-xs"
+          >
+            <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
+            {t("Filter")}
+            {drawerCount ? (
+              <span className="rounded bg-primary px-1.5 font-tabular text-[0.6875rem] text-primary-foreground">
+                {drawerCount}
+              </span>
+            ) : null}
+          </Button>
+          {filtersOn ? (
+            <button
+              type="button"
+              data-testid="participation-clear"
+              onClick={() => setFilters(EMPTY_PARTICIPATION_FILTERS)}
+              className="shrink-0 whitespace-nowrap px-1 text-xs font-medium text-primary hover:underline"
+            >
+              {t("Clear filters")}
+            </button>
+          ) : null}
+        </>
+      )}
     </div>
   );
 
@@ -423,6 +484,8 @@ export function ParticipationWorkbench({
       className={cn(
         "flex w-full flex-col gap-6",
         embedded ? "" : "px-4 py-6 sm:px-6 lg:px-8",
+        // Room for the fixed filter bar, so it never sits over the last row.
+        isMobile && "pb-24",
       )}
     >
       <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -548,6 +611,17 @@ export function ParticipationWorkbench({
             >
               <Download aria-hidden="true" className="h-3.5 w-3.5" />
               {t("Export CSV")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              data-testid="participation-export-pdf"
+              title={t("Print the list on screen, or save it as a PDF")}
+              onClick={onExportPdf}
+            >
+              <Printer aria-hidden="true" className="h-3.5 w-3.5" />
+              {t("Export PDF")}
             </Button>
           </div>
         </div>
@@ -927,6 +1001,53 @@ export function ParticipationWorkbench({
           </div>
         )}
       </section>
+
+      {/* Mobile: the ONE door to the filters, pinned to the viewport the way a
+          native app does it — thumb-reachable and always on screen. It was an
+          inline toolbar button, which on a phone scrolls away with the list
+          and strands you mid-table with no way back to the filters (owner
+          2026-08-27). `fixed`, not `sticky`: the panel above is a rounded card
+          with `overflow-hidden`, and a sticky child of that gets clipped by it
+          rather than pinning to the screen. It states the visible count too,
+          so the drawer is only opened on purpose. */}
+      {isMobile && !q.isLoading ? (
+        <div
+          data-testid="participation-bottom-bar"
+          className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-border bg-card/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur supports-[backdrop-filter]:bg-card/85"
+        >
+          <span className="min-w-0 flex-1 truncate font-tabular text-xs text-muted-foreground">
+            {filtersOn
+              ? `${rows.length} ${t("of")} ${all.length} ${t("people")}`
+              : `${all.length} ${all.length === 1 ? t("person") : t("people")}`}
+          </span>
+          {filtersOn ? (
+            <button
+              type="button"
+              data-testid="participation-clear"
+              onClick={() => setFilters(EMPTY_PARTICIPATION_FILTERS)}
+              className="shrink-0 whitespace-nowrap px-1 text-xs font-medium text-primary hover:underline"
+            >
+              {t("Clear filters")}
+            </button>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant={drawerCount ? "secondary" : "outline"}
+            data-testid="participation-open-filters"
+            onClick={() => setDrawer(true)}
+            className="h-10 shrink-0 px-3 text-sm"
+          >
+            <SlidersHorizontal aria-hidden="true" className="h-4 w-4" />
+            {t("Filter")}
+            {drawerCount ? (
+              <span className="rounded bg-primary px-1.5 font-tabular text-xs text-primary-foreground">
+                {drawerCount}
+              </span>
+            ) : null}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
