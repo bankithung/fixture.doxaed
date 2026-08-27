@@ -249,20 +249,47 @@ describe("CompetitionSpotlight", () => {
     expect(screen.getByText(long).className).toMatch(/sr-only/);
   });
 
-  it("shows the crest whole rather than cropping it to a circle", async () => {
-    // Owner 2026-08-27: "make sure the logo is not cropped and bigger size".
-    // The shared TeamCrest is a circular avatar and uses object-cover, which
-    // cuts a wide school badge — exactly the thing the hall is now reading.
+  it("shows the crest whole rather than cropping it", async () => {
+    // Owner 2026-08-27: "make sure the logo is not cropped", then "some logos
+    // are cropped" — because passing object-contain INTO TeamCrest never won:
+    // it appends its own object-cover after the caller's className, so
+    // tailwind-merge kept the crop. The board renders its own <img>, and this
+    // asserts on THAT element — the earlier version of this test checked the
+    // initials fallback, which never carried object-cover, so it passed while
+    // real logos stayed cropped.
+    mount([
+      m({
+        id: "done",
+        status: "completed",
+        home_score: 2,
+        away_score: 0,
+        home: { id: "a", name: "Alpha", short_name: "A", school: "Alpha", crest: "/media/a.png" },
+        away: { id: "b", name: "Bravo", short_name: "B", school: "Bravo", crest: "/media/b.png" },
+      } as Parameters<typeof m>[0]),
+    ]);
+    await openBoard();
+
+    const logos = screen.getAllByTestId("team-crest");
+    expect(logos).toHaveLength(2);
+    for (const logo of logos) {
+      expect(logo.className).toMatch(/object-contain/);
+      expect(logo.className).not.toMatch(/object-cover/);
+      // Width follows the image; nothing boxes, frames or clips it.
+      expect(logo.className).toMatch(/w-auto/);
+      expect(logo.className).not.toMatch(/rounded-full|overflow-hidden|border\b|p-\[/);
+      // A height cap, scaled off the viewport.
+      expect(logo.className).toMatch(/h-\[clamp\(/);
+    }
+  });
+
+  it("falls back to initials in a box when a side has no crest", async () => {
+    // Letters need a shape to sit in — the no-frame rule is about photographs
+    // of a badge, not about the fallback.
     mount([m({ id: "done", status: "completed", home_score: 2, away_score: 0 })]);
     await openBoard();
 
-    for (const crest of screen.getAllByTestId("team-crest-fallback")) {
-      expect(crest.className).toMatch(/object-contain/);
-      expect(crest.className).not.toMatch(/object-cover/);
-      expect(crest.className).not.toMatch(/rounded-full/);
-      // Bigger, and sized off the viewport rather than a fixed box.
-      expect(crest.className).toMatch(/clamp\(/);
-    }
+    expect(screen.getAllByTestId("team-crest-fallback")).toHaveLength(2);
+    expect(screen.queryAllByTestId("team-crest")).toEqual([]);
   });
 
   it("scales with the viewport instead of with a breakpoint", async () => {

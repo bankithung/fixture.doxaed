@@ -5,7 +5,7 @@ import type {
   PublicScheduleMatch,
   PublicScheduleSide,
 } from "@/api/tournaments";
-import { TeamCrest } from "@/components/ui/TeamCrest";
+import { crestInitials } from "@/components/ui/TeamCrest";
 import { WatchLiveLink } from "@/features/live/WatchLiveLink";
 import { routes } from "@/lib/routes";
 import { liveSetView } from "@/lib/setDisplay";
@@ -116,13 +116,69 @@ const BOARD = {
   score: "text-[clamp(3.5rem,min(20vw,38vh),24rem)]", // 384px on 1080p
   setRow: "text-[clamp(1.25rem,min(5vw,9vh),5.5rem)]", // 96px on 1080p
   // The crest identifies the side on its own, but it is the quieter half of
-  // the pair now: the numbers are what the hall is actually watching.
-  crest:
-    "h-[clamp(3.5rem,min(13vw,26vh),18rem)] w-[clamp(3.5rem,min(13vw,26vh),18rem)] text-[clamp(1.25rem,min(4vw,7vh),4.5rem)]", // 250px on 1080p
+  // the pair now: the numbers are what the hall is actually watching. This is
+  // a HEIGHT cap only — the width follows the logo's own aspect ratio, so
+  // nothing is ever boxed or cut (see BoardCrest).
+  crestH: "h-[clamp(3.5rem,min(13vw,26vh),18rem)]", // 250px tall on 1080p
+  crestBox:
+    "h-[clamp(3.5rem,min(13vw,26vh),18rem)] w-[clamp(3.5rem,min(13vw,26vh),18rem)] text-[clamp(1.25rem,min(4vw,7vh),4.5rem)]",
 } as const;
 
 function fullscreenElement(): Element | null {
   return document.fullscreenElement ?? null;
+}
+
+/** The board's crest: the logo AS IT IS, at its own aspect ratio.
+ *
+ * Deliberately not `TeamCrest`. That component is a circular avatar for dense
+ * rows — a fixed SQUARE box with `overflow-hidden`, a border, a card
+ * background and `object-cover` — and every one of those is wrong for a badge
+ * being read from the back of a hall, where the logo is the only thing naming
+ * the side.
+ *
+ * It also could not be talked out of it from the outside: `TeamCrest` appends
+ * its own `object-cover` AFTER the caller's `className`, so a passed
+ * `object-contain` loses the tailwind-merge race and the crop stayed (owner
+ * 2026-08-27: "some logos are cropped"). Overriding it from here would have
+ * been luck; a school badge is usually wide, and a square avatar crop cuts
+ * exactly the part being read.
+ *
+ * So: a height cap and `w-auto`. The width follows the image, nothing is
+ * boxed, framed, padded or cut — "keep it as it is". Only the initials
+ * fallback keeps a box, because letters need a shape to sit in.
+ */
+function BoardCrest({
+  side,
+}: {
+  side: PublicScheduleSide | null;
+}): React.ReactElement {
+  const [failed, setFailed] = useState(false);
+  const src = side?.crest;
+  if (!src || failed) {
+    return (
+      <span
+        aria-hidden="true"
+        data-testid="team-crest-fallback"
+        className={cn(
+          "inline-flex shrink-0 items-center justify-center rounded-2xl bg-muted font-semibold text-muted-foreground",
+          BOARD.crestBox,
+        )}
+      >
+        {crestInitials(side?.name ?? "")}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      aria-hidden="true"
+      decoding="async"
+      data-testid="team-crest"
+      onError={() => setFailed(true)}
+      className={cn("w-auto max-w-full object-contain", BOARD.crestH)}
+    />
+  );
 }
 
 /** One side on the BOARD: its crest with its OWN score under it, in one column
@@ -135,15 +191,11 @@ function fullscreenElement(): Element | null {
  * end went with which side. The score sits ON TOP of the badge, so the numbers
  * share one eye line across the board and the badges read as a base.
  *
- * Two departures from the shared `TeamCrest`, both for the same reason:
- *
- * - **`object-contain`, not `object-cover`.** The shared crest is a circular
- *   avatar and crops to fill it, which is right in a dense row and wrong here:
- *   a school badge is usually wide, and cropping cuts the very thing the hall
- *   is reading. Contained inside a rounded square, the logo is shown WHOLE.
- * - **It is no longer decorative**, so the team name rides along in an
- *   `sr-only` span. A sighted viewer reads the badge; a screen reader still
- *   gets the team, and neither gets nothing.
+ * The badge itself is `BoardCrest` (above) — shown whole, at its own aspect
+ * ratio, rather than through the shared circular avatar. And it is no longer
+ * decorative, so the team name rides along in an `sr-only` span: a sighted
+ * viewer reads the badge, a screen reader still gets the team, and neither is
+ * left with nothing.
  */
 function BoardSide({
   side,
@@ -170,11 +222,7 @@ function BoardSide({
           {score}
         </span>
       ) : null}
-      <TeamCrest
-        src={side?.crest}
-        name={side?.name ?? ""}
-        className={cn(BOARD.crest, "rounded-2xl object-contain p-[0.35em]")}
-      />
+      <BoardCrest side={side} />
       <span className="sr-only">{side?.name ?? t("TBD")}</span>
     </div>
   );
