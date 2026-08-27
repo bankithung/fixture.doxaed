@@ -108,7 +108,7 @@ const BOARD = {
   // it has ever been — and `object-contain` (below) means a wide school logo
   // is shown whole instead of being cropped to a circle.
   crest:
-    "h-[clamp(4.5rem,13vw,15rem)] w-[clamp(4.5rem,13vw,15rem)] text-[clamp(1.25rem,3.5vw,4rem)]",
+    "h-[clamp(5rem,17vw,20rem)] w-[clamp(5rem,17vw,20rem)] text-[clamp(1.5rem,4.5vw,5rem)]",
 } as const;
 
 function fullscreenElement(): Element | null {
@@ -281,10 +281,27 @@ export function CompetitionSpotlight({
     </Link>
   );
 
-  /** Every finished set on its OWN row. A board is read by running an eye
-   * down a column; the wrapped strip of chips the card uses gives it nothing
-   * to follow, and at board size it would run off the screen sideways. */
-  const setRows = sv?.finished ?? [];
+  /** EVERY set on its own row, the one in play included (owner 2026-08-27:
+   * "all the set scores should be shown").
+   *
+   * Read straight off `set_scores` rather than from `liveSetView`, which is
+   * built for the card and answers a different question: it drops the last row
+   * because that is the set in play and the card shows it as the headline
+   * score, and it returns null entirely once a match is not IN_PLAY — so a
+   * COMPLETED match was reaching the board with no sets on it at all, which is
+   * exactly when every set matters most.
+   *
+   * A board is read by running an eye down a column; the wrapped strip of
+   * chips the card uses gives it nothing to follow and at board size would run
+   * off the screen sideways. */
+  const setRows = m.set_scores ?? [];
+  /** While a set is still being played it is the LAST row, and nobody has won
+   * it yet — so it is flagged rather than scored like a finished set. */
+  const inPlayRow = sv ? setRows.length - 1 : -1;
+  /** The CARD keeps its old, narrower reading: finished sets only, as chips.
+   * It sits in a page you can scroll, beside a scoreline that already shows
+   * the set in play — the board's "show me everything" is a board rule. */
+  const cardSetChips = sv?.finished ?? [];
 
   /** THE BOARD (owner 2026-08-27). No names anywhere — "we will keep only the
    * team logo and the scores". Two rows, in reading order:
@@ -299,59 +316,80 @@ export function CompetitionSpotlight({
    */
   const boardTop = (
     <>
-      <div className="flex flex-col items-center gap-[0.15em]">
-        {centre}
-        {sv ? (
-          <p
-            data-testid="spotlight-sets-won"
-            className={cn("font-tabular text-muted-foreground", BOARD.sets)}
-          >
-            {t("Sets")} {sv.sets[0]}-{sv.sets[1]}
-          </p>
-        ) : null}
-        {hasPens ? (
-          <p className={cn("font-tabular text-muted-foreground", BOARD.sets)}>
-            {t("Pens")} {m.home_pens}-{m.away_pens}
-          </p>
-        ) : null}
+      {/* ONE line: crest, score, crest (owner 2026-08-27 — "the logo and the
+          scores should be in the same line"). A scoreboard is read across, so
+          the badge and the number it belongs to must sit on the same axis;
+          stacking the score above them made the eye travel twice to answer one
+          question. */}
+      <div className="grid w-full max-w-[96vw] grid-cols-[1fr_auto_1fr] items-center gap-[clamp(0.5rem,2.5vw,3.5rem)]">
+        <BoardCrest side={m.home} />
+        <div className="flex flex-col items-center gap-[0.1em]">
+          {centre}
+          {sv ? (
+            <p
+              data-testid="spotlight-sets-won"
+              className={cn("font-tabular text-muted-foreground", BOARD.sets)}
+            >
+              {t("Sets")} {sv.sets[0]}-{sv.sets[1]}
+            </p>
+          ) : null}
+          {hasPens ? (
+            <p className={cn("font-tabular text-muted-foreground", BOARD.sets)}>
+              {t("Pens")} {m.home_pens}-{m.away_pens}
+            </p>
+          ) : null}
+        </div>
+        <BoardCrest side={m.away} />
       </div>
 
-      <div className="grid w-full max-w-[95vw] grid-cols-[1fr_auto_1fr] items-center gap-[clamp(0.75rem,3vw,4rem)]">
-        <BoardCrest side={m.home} />
+      {/* Every set, one per row, under the line it belongs to. */}
+      {setRows.length > 0 ? (
         <div
           data-testid="spotlight-set-rows"
           className="flex flex-col items-center gap-[0.12em]"
         >
-          {setRows.map((set, i) => (
-            <p
-              key={i}
-              className={cn(
-                "font-tabular font-semibold leading-none tabular-nums",
-                BOARD.setRow,
-              )}
-            >
-              {/* The side that took the set is the one in full strength — the
-                  only cue left once the names are gone. */}
-              <span
+          {setRows.map((set, i) => {
+            const live = i === inPlayRow;
+            return (
+              <p
+                key={i}
+                data-live={live ? "" : undefined}
                 className={cn(
-                  set[0] > set[1] ? "text-foreground" : "text-muted-foreground",
+                  "font-tabular font-semibold leading-none tabular-nums",
+                  BOARD.setRow,
                 )}
               >
-                {set[0]}
-              </span>
-              <span className="px-[0.25em] text-muted-foreground">-</span>
-              <span
-                className={cn(
-                  set[1] > set[0] ? "text-foreground" : "text-muted-foreground",
-                )}
-              >
-                {set[1]}
-              </span>
-            </p>
-          ))}
+                {/* The side that took the set is the one at full strength —
+                    the only per-set cue left once the names are gone. On the
+                    set still in play that reads as who is leading. */}
+                <span
+                  className={cn(
+                    set[0]! > set[1]!
+                      ? live
+                        ? "text-primary"
+                        : "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {set[0]}
+                </span>
+                <span className="px-[0.25em] text-muted-foreground">-</span>
+                <span
+                  className={cn(
+                    set[1]! > set[0]!
+                      ? live
+                        ? "text-primary"
+                        : "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {set[1]}
+                </span>
+              </p>
+            );
+          })}
         </div>
-        <BoardCrest side={m.away} />
-      </div>
+      ) : null}
     </>
   );
 
@@ -375,9 +413,9 @@ export function CompetitionSpotlight({
             {t("Pens")} {m.home_pens}-{m.away_pens}
           </p>
         ) : null}
-        {setRows.length > 0 ? (
+        {cardSetChips.length > 0 ? (
           <div className="flex flex-wrap justify-center gap-[0.4em]">
-            {setRows.map((set, i) => (
+            {cardSetChips.map((set, i) => (
               <span
                 key={i}
                 className="rounded-md bg-muted px-[0.5em] py-[0.15em] font-tabular text-xs text-muted-foreground"

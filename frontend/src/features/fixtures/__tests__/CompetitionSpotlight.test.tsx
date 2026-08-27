@@ -322,14 +322,10 @@ describe("CompetitionSpotlight", () => {
     expect(meta).toHaveTextContent("Mph · T1");
   });
 
-  it("stacks each finished set on its own row between the crests", async () => {
-    // Owner 2026-08-27: "in the center the set scores, each score 1 row".
-    // A board is read by running an eye DOWN a column; the card's wrapped
-    // strip of chips gives it nothing to follow and runs off a wide screen.
-    Object.defineProperty(Element.prototype, "requestFullscreen", {
-      configurable: true, writable: true, value: vi.fn().mockResolvedValue(undefined),
-    });
-    // The LAST row is the set in play; the rest are finished (liveSetView).
+  it("shows EVERY set on its own row, the one in play included", async () => {
+    // Owner 2026-08-27: "all the set scores should be shown". liveSetView
+    // drops the last row (the card shows it as the headline score), so reading
+    // from it left the set in play off the board.
     mount([
       m({
         id: "live",
@@ -343,25 +339,59 @@ describe("CompetitionSpotlight", () => {
     await openBoard();
 
     const rows = screen.getByTestId("spotlight-set-rows");
-    expect(rows.children).toHaveLength(3);
+    expect(rows.children).toHaveLength(4);
     expect(rows.children[0]).toHaveTextContent("11-8");
-    expect(rows.children[1]).toHaveTextContent("9-11");
-    expect(rows.children[2]).toHaveTextContent("11-6");
+    expect(rows.children[3]).toHaveTextContent("5-3");
+    // The set still being played is flagged, not scored like a finished one.
+    expect(rows.children[3]).toHaveAttribute("data-live");
+    expect(rows.children[0]).not.toHaveAttribute("data-live");
     // Stacked, not wrapped side by side.
     expect(rows.className).toMatch(/flex-col/);
   });
 
-  it("puts the score above the crests, not between them", async () => {
-    // Owner 2026-08-27: "at the top the score, below the score the team logo,
-    // one team on the left and one on the right".
+  it("still shows the sets of a COMPLETED match", async () => {
+    // The gap this found: liveSetView returns null once a match is not in
+    // play, so a finished match reached the board with no sets on it at all —
+    // exactly when every set matters most.
+    mount([
+      m({
+        id: "done",
+        status: "completed",
+        sport: "table_tennis",
+        set_scores: [[11, 8], [9, 11], [11, 6]],
+        home_score: 2,
+        away_score: 1,
+      }),
+    ]);
+    await openBoard();
+
+    const rows = screen.getByTestId("spotlight-set-rows");
+    expect(rows.children).toHaveLength(3);
+    // Nothing is in play, so nothing is flagged.
+    expect(rows.querySelector("[data-live]")).toBeNull();
+  });
+
+  it("puts the crest and the score on ONE line", async () => {
+    // Owner 2026-08-27: "the logo and the scores should be in the same line".
+    // A scoreboard is read across; stacking the score above the crests made
+    // the eye travel twice to answer one question.
     mount([m({ id: "done", status: "completed", home_score: 2, away_score: 0 })]);
     await openBoard();
 
     const score = screen.getByLabelText("Open the match centre");
-    const crest = screen.getAllByTestId("team-crest-fallback")[0]!;
-    // The score comes first in document order — i.e. above.
+    const crests = screen.getAllByTestId("team-crest-fallback");
+    expect(crests).toHaveLength(2);
+    // One grid row holds crest, score, crest: both crests share the score's
+    // grandparent, and the score sits between them in document order.
+    const row = score.parentElement!.parentElement!;
+    expect(row).toContainElement(crests[0]!);
+    expect(row).toContainElement(crests[1]!);
+    expect(row.className).toMatch(/grid-cols-\[1fr_auto_1fr\]/);
     expect(
-      score.compareDocumentPosition(crest) & Node.DOCUMENT_POSITION_FOLLOWING,
+      crests[0]!.compareDocumentPosition(score) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      score.compareDocumentPosition(crests[1]!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
