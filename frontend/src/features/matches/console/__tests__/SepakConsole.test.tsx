@@ -193,6 +193,30 @@ describe("SepakConsole", () => {
     expect(screen.queryByTestId("change-ends")).toBeNull();
   });
 
+  it("starting the next set pushes the fresh 0-0 row before any point is tapped (owner 2026-08-27)", async () => {
+    renderSepak({ set_scores: [[20, 5]] });
+
+    await userEvent.click(screen.getByTestId("point-home"));
+    await waitFor(() =>
+      expect(liveApi.recordSetProgress).toHaveBeenLastCalledWith("m1", {
+        set_scores: [[21, 5]],
+        event_id: expect.any(String),
+      }),
+    );
+
+    await userEvent.click(await screen.findByTestId("start-next"));
+    await waitFor(() =>
+      expect(liveApi.recordSetProgress).toHaveBeenLastCalledWith("m1", {
+        set_scores: [
+          [21, 5],
+          [0, 0],
+        ],
+        event_id: expect.any(String),
+      }),
+    );
+    expect(liveApi.recordSetScores).not.toHaveBeenCalled();
+  });
+
   it("records the final set result through the confirm dialog", async () => {
     vi.mocked(liveApi.recordSetScores).mockResolvedValue({} as never);
     renderSepak({

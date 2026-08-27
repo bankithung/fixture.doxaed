@@ -342,9 +342,17 @@ export function TTConsole({
       event_id: newEventId(),
     });
   };
+  // Starting the next game is a PUSH, not a local step (owner 2026-08-27):
+  // the blank row used to live only on this phone until the first point of the
+  // new game was tapped, so the public board and every other viewer kept the
+  // finished game's points as the headline score — "6-11" with nothing
+  // moving — long after the players had changed ends. The server accepts a
+  // trailing 0-0 as the game in play, and its fan-out is what turns the page.
   const startNextGame = () => {
     buzz();
-    setSetRows((rows) => [...rows, ["", ""]]);
+    const next: SetRow[] = [...setRows, ["", ""]];
+    setSetRows(next);
+    schedulePush(next);
   };
 
 

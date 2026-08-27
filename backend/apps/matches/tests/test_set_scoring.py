@@ -327,6 +327,29 @@ def test_progress_updates_points_without_completing():
     assert (m.home_score, m.away_score) == (1, 0)
 
 
+def test_progress_accepts_the_fresh_set_the_board_starts():
+    """'Start game 2' pushes ``[[11, 7], [0, 0]]`` the moment it is pressed
+    (owner 2026-08-27): a 0-0 last row is the set IN PLAY, not a skipped one,
+    and sets won stay 1-0 so the public board turns the page to game 2 before
+    a single point of it is scored."""
+    admin = _admin()
+    m = _live_tt_match(admin)
+    c = APIClient()
+    c.force_authenticate(user=admin)
+
+    r = c.post(
+        f"/api/matches/{m.id}/score/",
+        {"set_scores": [[11, 7], [0, 0]], "progress": True,
+         "event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    m.refresh_from_db()
+    assert m.status == MatchStatus.LIVE
+    assert m.set_scores == [[11, 7], [0, 0]]
+    assert (m.home_score, m.away_score) == (1, 0)
+
+
 def test_progress_rejected_unless_live():
     admin = _admin()
     t = create_tournament(user=admin, name="TT Sched")

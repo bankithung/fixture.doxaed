@@ -200,6 +200,33 @@ describe("TTConsole", () => {
     expect(strip).toHaveTextContent("1-0");
   });
 
+  it("starting the next game pushes the fresh 0-0 row before any point is tapped (owner 2026-08-27)", async () => {
+    renderTT({ set_scores: [[10, 7]] });
+
+    await userEvent.click(screen.getByTestId("point-home"));
+    await waitFor(() =>
+      expect(liveApi.recordSetProgress).toHaveBeenLastCalledWith("m1", {
+        set_scores: [[11, 7]],
+        event_id: expect.any(String),
+      }),
+    );
+
+    // The step alone must reach the server: until it did, the public board
+    // kept "11-7" as the live score for the whole interval before the first
+    // point of game 2, however long the change of ends took.
+    await userEvent.click(screen.getByTestId("start-next"));
+    await waitFor(() =>
+      expect(liveApi.recordSetProgress).toHaveBeenLastCalledWith("m1", {
+        set_scores: [
+          [11, 7],
+          [0, 0],
+        ],
+        event_id: expect.any(String),
+      }),
+    );
+    expect(liveApi.recordSetScores).not.toHaveBeenCalled();
+  });
+
   it("scoring continues into the started game and auto-saves the rows", async () => {
     renderTT({ set_scores: [[10, 7]] });
 
