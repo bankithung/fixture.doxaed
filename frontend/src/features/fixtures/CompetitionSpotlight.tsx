@@ -96,19 +96,29 @@ const KIND_LABEL: Record<SpotlightKind, string> = {
  * screen, and the middle term is what carries it between the two. */
 const BOARD = {
   bar: "text-[clamp(0.875rem,1.7vw,2rem)]",
-  score: "text-[clamp(3.5rem,15vw,16rem)]",
   clock: "text-[clamp(2.5rem,10vw,10rem)]",
   meta: "text-[clamp(0.875rem,1.9vw,2rem)]",
-  // The sets-won line qualifies the big score, so it sits just under it.
-  sets: "text-[clamp(1rem,2.6vw,3rem)]",
-  // One finished set per row, big enough to read down the column from the
-  // back of a hall.
-  setRow: "text-[clamp(1.5rem,4.5vw,5rem)]",
-  // The crest is now the ONLY thing identifying a side, so it is the biggest
-  // it has ever been — and `object-contain` (below) means a wide school logo
-  // is shown whole instead of being cropped to a circle.
+  // The sets-won line qualifies the score, so it stays the quiet one.
+  sets: "text-[clamp(1rem,3vw,3.5rem)]",
+  // The three that carry the board, sized off `min(vw, vh)` rather than `vw`
+  // alone (owner 2026-08-27: "lets make the icons and the score bigger").
+  //
+  // Width is not the binding constraint here — HEIGHT is. A side column is the
+  // score stacked on the crest, so those two share the viewport's height with
+  // however many set rows the match has run to, and a five-set match adds rows
+  // to a board that is already nearly full. On a 16:9 screen 1vw is only
+  // ~0.56vh, so a `vw`-only size that looks right on a laptop runs off the
+  // bottom of an ultrawide. `min()` lets the vw term win on the ordinary
+  // screens this is read on, and the vh term take over exactly when the screen
+  // is too short for it — the board gets bigger without ever needing a scroll
+  // nobody in a hall can perform.
+  score: "text-[clamp(3rem,min(19vw,24vh),22rem)]",
+  setRow: "text-[clamp(1.25rem,min(5.5vw,7vh),6rem)]",
+  // The crest is the ONLY thing identifying a side, so it is the biggest
+  // element on the board — and `object-contain` at the call site means a wide
+  // school logo is shown whole instead of cropped to a circle.
   crest:
-    "h-[clamp(5rem,17vw,20rem)] w-[clamp(5rem,17vw,20rem)] text-[clamp(1.5rem,4.5vw,5rem)]",
+    "h-[clamp(4rem,min(21vw,28vh),26rem)] w-[clamp(4rem,min(21vw,28vh),26rem)] text-[clamp(1.5rem,min(5vw,6vh),5.5rem)]",
 } as const;
 
 function fullscreenElement(): Element | null {
