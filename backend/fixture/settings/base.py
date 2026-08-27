@@ -225,6 +225,14 @@ CHANNEL_LAYERS = {
     "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"},
 }
 
+# --- Live tick coalescing (rapid scoring; see apps/live/publish.py) -------
+# Milliseconds to collapse a burst of score/event ticks into one leading +
+# one trailing tick per tournament. 0 = off (every event publishes its own
+# tick), which is the default and what the test suite asserts against. Prod
+# turns it on: six scorers tapping at once used to broadcast six
+# tournament-wide ticks a second to every connected client.
+LIVE_TICK_COALESCE_MS = env.int("LIVE_TICK_COALESCE_MS", default=0)
+
 # --- Cache (dev: locmem; prod will be Redis) -----------------------------
 CACHES = {
     "default": {

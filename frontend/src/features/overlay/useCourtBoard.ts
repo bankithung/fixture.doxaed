@@ -61,6 +61,9 @@ export interface CourtBoard extends BoardProps {
   connected: boolean;
 }
 
+/** Coalesce a burst of ticks into one refetch (see useEventStream). */
+const TICK_DEBOUNCE_MS = 750;
+
 export function useCourtBoard({
   slug,
   id,
@@ -71,6 +74,9 @@ export function useCourtBoard({
 
   // When the stream last told us something — half of the freshness clock.
   const [tickedAt, setTickedAt] = useState(0);
+  // Debounced: this refetches the whole public schedule plus every court
+  // snapshot on each tick, and an overlay is typically left open all day next
+  // to five others. Leading edge still fires at once, so the board is live.
   const { connected } = useEventStream(
     slug && id ? liveApi.streamUrl(slug, id) : null,
     () => {
@@ -78,6 +84,7 @@ export function useCourtBoard({
       qc.invalidateQueries({ queryKey: ["overlay-schedule", slug, id] });
       qc.invalidateQueries({ queryKey: ["overlay-snapshot"] });
     },
+    TICK_DEBOUNCE_MS,
   );
 
   const schedule = useQuery({

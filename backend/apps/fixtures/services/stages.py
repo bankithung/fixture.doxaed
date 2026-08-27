@@ -8,15 +8,50 @@ and the groups→knockout bridge. Multi-stage is orchestration, not new pairing.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 
-from django.db import transaction
+from django.db import connection, transaction
 
 from apps.matches.models import Match, MatchStatus
 
 logger = logging.getLogger(__name__)
 
 _FINAL = (MatchStatus.COMPLETED, MatchStatus.WALKOVER)
+
+
+def _lock_deferred_draw(tournament_id, leaf: str) -> None:
+    """Serialize the deferred draw for ONE (tournament, competition).
+
+    This used to be ``Tournament.objects.select_for_update()`` — an exclusive
+    lock on the whole tournament ROW, taken on every match finalisation. It was
+    correct but far too wide: it made one global mutex out of a guard whose
+    real scope is a single competition's next stage, and it collided with every
+    other writer of that row (state transitions, preview pins). During the
+    2026-08-27 incident that produced a lock convoy 72 backends deep behind one
+    slow holder, which starved the workers and crash-looped them.
+
+    A transaction-scoped ADVISORY lock has exactly the scope the guard needs
+    and touches no row, so table-tennis U-14 and sepak U-16 can draw their
+    knockouts at the same time and neither blocks a scorer's tap. It releases
+    with the transaction, like the row lock did.
+
+    Postgres-only; any other backend keeps the original row lock so tests and
+    local runs on another engine behave identically.
+    """
+    if connection.vendor != "postgresql":  # pragma: no cover - prod is Postgres
+        from apps.tournaments.models import Tournament
+
+        Tournament.objects.select_for_update().get(pk=tournament_id)
+        return
+    digest = hashlib.blake2b(
+        f"deferred_draw:{tournament_id}:{leaf}".encode(), digest_size=8
+    ).digest()
+    with connection.cursor() as cur:
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(%s)",
+            [int.from_bytes(digest, "big", signed=True)],
+        )
 
 
 def _stage_idx(stages: list, ref, fallback: int) -> int:
@@ -141,11 +176,11 @@ def materialize_ready_stages(match) -> list:
     """Draw the NEXT stage that sources from ``match``'s stage, once that source
     stage is fully final (deferred materialization). v1: a knockout stage
     sourced from a round_robin stage, via the existing groups→knockout bridge,
-    stamped with the multi-stage index. A tournament-row lock + re-check
-    serialize concurrent final-match commits (the TOCTOU double-draw guard)."""
+    stamped with the multi-stage index. A per-competition advisory lock +
+    re-check serialize concurrent final-match commits (the TOCTOU double-draw
+    guard) — see ``_lock_deferred_draw`` for why it is not the tournament row."""
     from apps.fixtures.services.draw_config import effective_stages
     from apps.fixtures.services.generate import generate_knockout_from_groups
-    from apps.tournaments.models import Tournament
 
     leaf = match.leaf_key or ""  # "" = whole-tournament scope
     stages = effective_stages(match.tournament, leaf)
@@ -174,7 +209,7 @@ def materialize_ready_stages(match) -> list:
         return []  # source stage not finished yet
 
     with transaction.atomic():
-        Tournament.objects.select_for_update().get(pk=match.tournament_id)
+        _lock_deferred_draw(match.tournament_id, leaf)
         if Match.objects.filter(
             tournament=match.tournament, leaf_key=leaf, stage_no=nxt_i,
             deleted_at__isnull=True,

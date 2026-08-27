@@ -34,15 +34,61 @@ const BASE_BACKOFF_MS = 1_000;
  *   keep their polling fallback exactly while the stream cannot deliver.
  *
  * Pass `url: null` while the URL is unknown (e.g. the slug hasn't loaded).
+ * Pass `debounceMs` to coalesce bursts (leading + trailing); see `emit` below.
  */
 export function useEventStream(
   url: string | null,
   onTick: (tick: StreamTick) => void,
+  debounceMs = 0,
 ): { connected: boolean } {
   const [connected, setConnected] = useState(false);
   const cb = useRef(onTick);
   useEffect(() => {
     cb.current = onTick;
+  });
+
+  // Coalesce a burst of ticks into one callback. A tick carries no data — it
+  // only says "something changed" — and the handler answers it by refetching a
+  // tournament-wide aggregate, so firing once per tick means six scorers
+  // tapping points cost every open board six full refetches a second. The
+  // FIRST tick of a burst still fires immediately (the board moves on the
+  // tap); the rest collapse into one trailing call. `debounceMs = 0` keeps the
+  // original fire-on-every-tick behaviour for callers that do their own.
+  const burst = useRef<{
+    timer: ReturnType<typeof setTimeout> | null;
+    pending: StreamTick | null;
+  }>({ timer: null, pending: null });
+  useEffect(
+    () => () => {
+      if (burst.current.timer) clearTimeout(burst.current.timer);
+      burst.current = { timer: null, pending: null };
+    },
+    [],
+  );
+  // Read the window through a ref: `emit` is created once, so closing over the
+  // prop directly would pin whatever it was on first render.
+  const windowMs = useRef(debounceMs);
+  useEffect(() => {
+    windowMs.current = debounceMs;
+  }, [debounceMs]);
+  const emit = useRef((tick: StreamTick): void => {
+    const wait = windowMs.current;
+    if (wait <= 0) {
+      cb.current(tick);
+      return;
+    }
+    const b = burst.current;
+    if (b.timer) {
+      b.pending = tick; // inside the window — fold into the trailing call
+      return;
+    }
+    cb.current(tick); // leading edge
+    b.timer = setTimeout(function close() {
+      const trailing = b.pending;
+      b.pending = null;
+      b.timer = null;
+      if (trailing) cb.current(trailing);
+    }, wait);
   });
 
   useEffect(() => {
@@ -97,7 +143,7 @@ export function useEventStream(
         } catch {
           // A malformed frame is still a tick — refetch anyway.
         }
-        cb.current(tick);
+        emit.current(tick);
       });
       es.onerror = () => {
         setConnected(false);

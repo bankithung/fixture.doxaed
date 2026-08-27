@@ -56,6 +56,12 @@ CHANNEL_LAYERS = {
     }
 }
 
+# --- Live tick coalescing ---------------------------------------------------
+# One second: clients already debounce their refetch, so a burst of taps has
+# nothing to gain from six separate broadcasts. Leading edge still goes out
+# immediately, so a scored point still moves the board at once.
+LIVE_TICK_COALESCE_MS = env.int("LIVE_TICK_COALESCE_MS", default=1000)
+
 # --- Email -----------------------------------------------------------------
 # Backend is env-selectable. Production uses Amazon SES via django-ses
 # (EMAIL_BACKEND=django_ses.SESBackend); SMTP remains available as a fallback.

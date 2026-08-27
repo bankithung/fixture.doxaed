@@ -10,6 +10,9 @@ import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 
+/** Coalesce a burst of ticks into one schedule refetch (see useEventStream). */
+const TICK_DEBOUNCE_MS = 750;
+
 const LIVE = new Set(["live", "half_time"]);
 const FINAL = new Set(["completed", "walkover"]);
 
@@ -29,9 +32,15 @@ export function VenueDisplayPage(): React.ReactElement {
     queryFn: () => tournamentsApi.publicSchedule(slug, id),
     refetchInterval: 60_000,
   });
-  useEventStream(slug && id ? liveApi.streamUrl(slug, id) : null, () => {
-    qc.invalidateQueries({ queryKey: ["public-schedule", id] });
-  });
+  // Debounced: a big-screen board refetches the WHOLE public schedule on every
+  // tick, and during rapid scoring that was once per point per scorer.
+  useEventStream(
+    slug && id ? liveApi.streamUrl(slug, id) : null,
+    () => {
+      qc.invalidateQueries({ queryKey: ["public-schedule", id] });
+    },
+    TICK_DEBOUNCE_MS,
+  );
   useEffect(() => {
     if (q.data) document.title = `${q.data.tournament.name} · ${t("Display")}`;
   }, [q.data]);
