@@ -115,38 +115,55 @@ function fullscreenElement(): Element | null {
   return document.fullscreenElement ?? null;
 }
 
-/** One side on the BOARD: the crest, and nothing else.
-
- * The board carries no names at all (owner 2026-08-27: "no need to show the
- * team name, we will keep only the team logo and the scores"). So the crest is
- * doing the whole job of saying who this is, which drives both departures from
- * the shared `TeamCrest` look:
+/** One side on the BOARD: its crest with its OWN score under it, in one column
+ * (owner 2026-08-27: "the score and the logo in one column").
+ *
+ * The board carries no names at all — "we will keep only the team logo and the
+ * scores" — so the crest does the whole job of saying who this is, and putting
+ * the number directly beneath it is what ties the two together: a single
+ * combined "11 - 7" in the middle belonged to neither badge, and the eye had to
+ * work out which end went with which side.
+ *
+ * Two departures from the shared `TeamCrest`, both for the same reason:
  *
  * - **`object-contain`, not `object-cover`.** The shared crest is a circular
  *   avatar and crops to fill it, which is right in a dense row and wrong here:
  *   a school badge is usually wide, and cropping cuts the very thing the hall
  *   is reading. Contained inside a rounded square, the logo is shown WHOLE.
- * - **It is no longer decorative**, so it stops being `aria-hidden` by proxy —
- *   the team name rides along in an `sr-only` span. A sighted viewer reads the
- *   badge; a screen reader still gets the team, and neither gets nothing.
+ * - **It is no longer decorative**, so the team name rides along in an
+ *   `sr-only` span. A sighted viewer reads the badge; a screen reader still
+ *   gets the team, and neither gets nothing.
  */
-function BoardCrest({
+function BoardSide({
   side,
+  score,
 }: {
   side: PublicScheduleSide | null;
+  /** This side's own number, or null before a ball is played. */
+  score: number | null;
 }): React.ReactElement {
   return (
-    <div className="flex min-w-0 flex-col items-center">
+    <div className="flex min-w-0 flex-col items-center gap-[0.1em]">
       <TeamCrest
         src={side?.crest}
         name={side?.name ?? ""}
         className={cn(BOARD.crest, "rounded-2xl object-contain p-[0.35em]")}
       />
       <span className="sr-only">{side?.name ?? t("TBD")}</span>
+      {score !== null ? (
+        <span
+          data-testid="spotlight-side-score"
+          className={cn(
+            "font-tabular font-semibold tabular-nums leading-none",
+            BOARD.score,
+          )}
+        >
+          {score}
+        </span>
+      ) : null}
     </div>
   );
 }
-
 export function CompetitionSpotlight({
   matches,
   timeZone,
@@ -315,82 +332,90 @@ export function CompetitionSpotlight({
    * court and on a projector at the back of a hall with no breakpoint jump.
    */
   const boardTop = (
-    <>
-      {/* ONE line: crest, score, crest (owner 2026-08-27 — "the logo and the
-          scores should be in the same line"). A scoreboard is read across, so
-          the badge and the number it belongs to must sit on the same axis;
-          stacking the score above them made the eye travel twice to answer one
-          question. */}
-      <div className="grid w-full max-w-[96vw] grid-cols-[1fr_auto_1fr] items-center gap-[clamp(0.5rem,2.5vw,3.5rem)]">
-        <BoardCrest side={m.home} />
-        <div className="flex flex-col items-center gap-[0.1em]">
-          {centre}
-          {sv ? (
-            <p
-              data-testid="spotlight-sets-won"
-              className={cn("font-tabular text-muted-foreground", BOARD.sets)}
-            >
-              {t("Sets")} {sv.sets[0]}-{sv.sets[1]}
-            </p>
-          ) : null}
-          {hasPens ? (
-            <p className={cn("font-tabular text-muted-foreground", BOARD.sets)}>
-              {t("Pens")} {m.home_pens}-{m.away_pens}
-            </p>
-          ) : null}
-        </div>
-        <BoardCrest side={m.away} />
+    <Link
+      to={routes.liveViewer(m.id)}
+      aria-label={t("Open the match centre")}
+      className="grid w-full max-w-[96vw] grid-cols-[1fr_auto_1fr] items-center gap-[clamp(0.5rem,2.5vw,3.5rem)] rounded-xl transition-colors hover:text-primary"
+    >
+      {/* Each side is ONE column: badge, then that side's own number. */}
+      <BoardSide side={m.home} score={played ? score[0]! : null} />
+
+      {/* Between them, what belongs to neither side on its own. */}
+      <div className="flex flex-col items-center gap-[0.1em]">
+        {!played ? (
+          <span
+            className={cn(
+              "font-tabular font-semibold leading-none text-muted-foreground",
+              BOARD.clock,
+            )}
+          >
+            {kickoff}
+          </span>
+        ) : null}
+        {sv ? (
+          <p
+            data-testid="spotlight-sets-won"
+            className={cn("font-tabular text-muted-foreground", BOARD.sets)}
+          >
+            {t("Sets")} {sv.sets[0]}-{sv.sets[1]}
+          </p>
+        ) : null}
+        {hasPens ? (
+          <p className={cn("font-tabular text-muted-foreground", BOARD.sets)}>
+            {t("Pens")} {m.home_pens}-{m.away_pens}
+          </p>
+        ) : null}
+        {setRows.length > 0 ? (
+          <div
+            data-testid="spotlight-set-rows"
+            className="flex flex-col items-center gap-[0.12em]"
+          >
+            {setRows.map((set, i) => {
+              const live = i === inPlayRow;
+              return (
+                <p
+                  key={i}
+                  data-live={live ? "" : undefined}
+                  className={cn(
+                    "font-tabular font-semibold leading-none tabular-nums",
+                    BOARD.setRow,
+                  )}
+                >
+                  {/* The side that took the set is the one at full strength —
+                      the only per-set cue left once the names are gone. On the
+                      set still in play that reads as who is leading. */}
+                  <span
+                    className={cn(
+                      set[0]! > set[1]!
+                        ? live
+                          ? "text-primary"
+                          : "text-foreground"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {set[0]}
+                  </span>
+                  <span className="px-[0.25em] text-muted-foreground">-</span>
+                  <span
+                    className={cn(
+                      set[1]! > set[0]!
+                        ? live
+                          ? "text-primary"
+                          : "text-foreground"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {set[1]}
+                  </span>
+                </p>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
 
-      {/* Every set, one per row, under the line it belongs to. */}
-      {setRows.length > 0 ? (
-        <div
-          data-testid="spotlight-set-rows"
-          className="flex flex-col items-center gap-[0.12em]"
-        >
-          {setRows.map((set, i) => {
-            const live = i === inPlayRow;
-            return (
-              <p
-                key={i}
-                data-live={live ? "" : undefined}
-                className={cn(
-                  "font-tabular font-semibold leading-none tabular-nums",
-                  BOARD.setRow,
-                )}
-              >
-                {/* The side that took the set is the one at full strength —
-                    the only per-set cue left once the names are gone. On the
-                    set still in play that reads as who is leading. */}
-                <span
-                  className={cn(
-                    set[0]! > set[1]!
-                      ? live
-                        ? "text-primary"
-                        : "text-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {set[0]}
-                </span>
-                <span className="px-[0.25em] text-muted-foreground">-</span>
-                <span
-                  className={cn(
-                    set[1]! > set[0]!
-                      ? live
-                        ? "text-primary"
-                        : "text-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {set[1]}
-                </span>
-              </p>
-            );
-          })}
-        </div>
-      ) : null}
-    </>
+      <BoardSide side={m.away} score={played ? score[1]! : null} />
+    </Link>
   );
 
   const cardGrid = (

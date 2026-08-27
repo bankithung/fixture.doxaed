@@ -371,28 +371,35 @@ describe("CompetitionSpotlight", () => {
     expect(rows.querySelector("[data-live]")).toBeNull();
   });
 
-  it("puts the crest and the score on ONE line", async () => {
-    // Owner 2026-08-27: "the logo and the scores should be in the same line".
-    // A scoreboard is read across; stacking the score above the crests made
-    // the eye travel twice to answer one question.
-    mount([m({ id: "done", status: "completed", home_score: 2, away_score: 0 })]);
+  it("pairs each crest with its OWN score in one column", async () => {
+    // Owner 2026-08-27: "the score and the logo in one column". A single
+    // combined "11 - 7" in the middle belonged to neither badge, and the eye
+    // had to work out which end went with which side.
+    mount([m({ id: "done", status: "completed", home_score: 11, away_score: 7 })]);
     await openBoard();
 
-    const score = screen.getByLabelText("Open the match centre");
     const crests = screen.getAllByTestId("team-crest-fallback");
+    const scores = screen.getAllByTestId("spotlight-side-score");
     expect(crests).toHaveLength(2);
-    // One grid row holds crest, score, crest: both crests share the score's
-    // grandparent, and the score sits between them in document order.
-    const row = score.parentElement!.parentElement!;
-    expect(row).toContainElement(crests[0]!);
-    expect(row).toContainElement(crests[1]!);
+    expect(scores).toHaveLength(2);
+    // Home badge and 11 share a column; away badge and 7 share the other.
+    expect(crests[0]!.parentElement).toBe(scores[0]!.parentElement);
+    expect(crests[1]!.parentElement).toBe(scores[1]!.parentElement);
+    expect(scores[0]!).toHaveTextContent("11");
+    expect(scores[1]!).toHaveTextContent("7");
+    // The two columns sit either side of the middle, on one row.
+    const row = crests[0]!.parentElement!.parentElement!;
     expect(row.className).toMatch(/grid-cols-\[1fr_auto_1fr\]/);
-    expect(
-      crests[0]!.compareDocumentPosition(score) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      score.compareDocumentPosition(crests[1]!) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(row).toContainElement(crests[1]!);
+  });
+
+  it("shows a kickoff instead of scores before a ball is played", async () => {
+    // A column with a badge and a stray 0 would read as a result.
+    mount([m({ id: "next", status: "scheduled" })]);
+    await openBoard();
+
+    expect(screen.queryAllByTestId("spotlight-side-score")).toEqual([]);
+    expect(screen.getAllByTestId("team-crest-fallback")).toHaveLength(2);
   });
 
   it("moves to the next match on its own once the live one finishes", () => {
