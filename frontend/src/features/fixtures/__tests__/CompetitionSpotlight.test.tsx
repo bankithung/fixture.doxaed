@@ -426,6 +426,67 @@ describe("CompetitionSpotlight", () => {
     expect(row).toContainElement(crests[1]!);
   });
 
+  it("says who WON a finished match, and steps the loser back", async () => {
+    // Owner 2026-08-27: "the match is over so it should properly show who the
+    // winner is". Two crests and "0" / "3" is a scoreline, not a result —
+    // the winning column carries the word, the losing column fades.
+    mount([
+      m({
+        id: "done",
+        status: "completed",
+        sport: "table_tennis",
+        set_scores: [[6, 11], [7, 11], [9, 11]],
+        home_score: 0,
+        away_score: 3,
+      }),
+    ]);
+    await openBoard();
+
+    const sides = screen.getAllByTestId("spotlight-side");
+    expect(sides[0]).toHaveAttribute("data-result", "lost");
+    expect(sides[1]).toHaveAttribute("data-result", "won");
+    const tag = screen.getByTestId("spotlight-winner");
+    expect(tag).toHaveTextContent("Winner");
+    expect(tag).toHaveTextContent("Bravo");
+    // The tag sits IN the winner's own column, under that crest.
+    expect(sides[1]).toContainElement(tag);
+    expect(sides[0]).not.toContainElement(tag);
+  });
+
+  it("calls no winner while the match is still on, or when it was drawn", async () => {
+    mount([
+      m({
+        id: "live",
+        status: "live",
+        set_scores: [[11, 6], [3, 2]],
+        home_score: 1,
+        away_score: 0,
+      }),
+    ]);
+    await openBoard();
+    expect(screen.queryByTestId("spotlight-winner")).toBeNull();
+    for (const side of screen.getAllByTestId("spotlight-side")) {
+      expect(side).not.toHaveAttribute("data-result");
+    }
+  });
+
+  it("a drawn football group game has no winner to name", async () => {
+    mount([
+      m({
+        id: "draw",
+        status: "completed",
+        sport: "",
+        home_score: 1,
+        away_score: 1,
+      }),
+    ]);
+    await openBoard();
+    expect(screen.queryByTestId("spotlight-winner")).toBeNull();
+    for (const side of screen.getAllByTestId("spotlight-side")) {
+      expect(side).not.toHaveAttribute("data-result");
+    }
+  });
+
   it("shows a kickoff instead of scores before a ball is played", async () => {
     // A column with a badge and a stray 0 would read as a result.
     mount([m({ id: "next", status: "scheduled" })]);

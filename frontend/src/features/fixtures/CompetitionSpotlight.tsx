@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, Trophy } from "lucide-react";
 import type {
   PublicScheduleMatch,
   PublicScheduleSide,
@@ -15,6 +15,7 @@ import {
   shortGroup,
   spotlightNextUp,
   spotlightPick,
+  winnerOf,
   type SpotlightKind,
 } from "./publicTournament";
 import { LivePulse, TeamName, fmtKickoff } from "./publicMatchCard";
@@ -200,13 +201,27 @@ function BoardCrest({
 function BoardSide({
   side,
   score,
+  result,
 }: {
   side: PublicScheduleSide | null;
   /** This side's own number, or null before a ball is played. */
   score: number | null;
+  /** Once the match is over: which end of the result this side is on. Null
+   * while there is nothing to call — unplayed, in play, or a draw. */
+  result: "won" | "lost" | null;
 }): React.ReactElement {
   return (
-    <div className="flex min-w-0 flex-col items-center gap-[0.1em]">
+    <div
+      data-testid="spotlight-side"
+      data-result={result ?? undefined}
+      className={cn(
+        "flex min-w-0 flex-col items-center gap-[0.1em]",
+        // The loser steps back as a whole — number and badge together — so
+        // the board reads as ONE side standing, not two columns of equal
+        // weight with a "3" that happens to be bigger than a "0".
+        result === "lost" && "opacity-50",
+      )}
+    >
       {/* Score ABOVE the badge (owner 2026-08-27: "keep the logo down and the
           score up"). The numbers are what changes and what the hall is
           watching, so they sit on the eye line across the whole board, with
@@ -217,6 +232,7 @@ function BoardSide({
           className={cn(
             "font-tabular font-semibold tabular-nums leading-none",
             BOARD.score,
+            result === "won" && "text-primary",
           )}
         >
           {score}
@@ -224,6 +240,27 @@ function BoardSide({
       ) : null}
       <BoardCrest side={side} />
       <span className="sr-only">{side?.name ?? t("TBD")}</span>
+      {/* The result, said in words, under the side that took it (owner
+          2026-08-27: "the match is over so it should properly show who the
+          winner is"). This is the ONE name the board carries: the two sides
+          are their crests, but the answer to "who won?" has to survive a
+          badge nobody in the hall recognises, and one line under one column
+          is not the clutter the per-side names were. */}
+      {result === "won" ? (
+        <span
+          data-testid="spotlight-winner"
+          className={cn(
+            "mt-[0.35em] inline-flex max-w-full items-center gap-[0.4em] rounded-full bg-primary px-[0.9em] py-[0.3em] font-semibold leading-none text-primary-foreground",
+            BOARD.meta,
+          )}
+        >
+          <Trophy aria-hidden="true" className="h-[1em] w-[1em] shrink-0" />
+          <span className="min-w-0 truncate">
+            {t("Winner")}
+            {side ? ` · ${side.name}` : ""}
+          </span>
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -286,6 +323,12 @@ export function CompetitionSpotlight({
     ? sv.points
     : [m.home_score ?? 0, m.away_score ?? 0];
   const played = kind !== "next";
+  // Who took it, once anyone has: sets won for a set sport, goals otherwise,
+  // penalties on a drawn knockout, and a walkover counts. Null until then —
+  // and null for a drawn group game, where neither side is dimmed.
+  const win = winnerOf(m);
+  const resultOf = (side: PublicScheduleSide | null): "won" | "lost" | null =>
+    win == null ? null : side != null && side.id === win.id ? "won" : "lost";
   const hasPens = m.home_pens != null && m.away_pens != null;
   const kickoff = fmtKickoff(m.scheduled_at, timeZone);
   // What the group label ADDS beyond the competition — "3rd Place", "Group A".
@@ -401,7 +444,11 @@ export function CompetitionSpotlight({
       className="grid w-full max-w-[96vw] grid-cols-[1fr_auto_1fr] items-center gap-[clamp(0.5rem,2.5vw,3.5rem)] rounded-xl transition-colors hover:text-primary"
     >
       {/* Each side is ONE column: badge, then that side's own number. */}
-      <BoardSide side={m.home} score={played ? score[0]! : null} />
+      <BoardSide
+        side={m.home}
+        score={played ? score[0]! : null}
+        result={resultOf(m.home)}
+      />
 
       {/* Between them, what belongs to neither side on its own. */}
       <div className="flex flex-col items-center gap-[0.1em]">
@@ -477,7 +524,11 @@ export function CompetitionSpotlight({
         ) : null}
       </div>
 
-      <BoardSide side={m.away} score={played ? score[1]! : null} />
+      <BoardSide
+        side={m.away}
+        score={played ? score[1]! : null}
+        result={resultOf(m.away)}
+      />
     </Link>
   );
 
@@ -487,7 +538,13 @@ export function CompetitionSpotlight({
         side={m.home}
         crestSize="lg"
         wrap
-        className="mx-auto text-sm font-medium sm:mx-0 sm:ml-auto sm:text-base"
+        className={cn(
+          "mx-auto text-sm sm:mx-0 sm:ml-auto sm:text-base",
+          resultOf(m.home) === "lost"
+            ? "font-medium text-muted-foreground"
+            : "font-medium",
+          resultOf(m.home) === "won" && "font-semibold",
+        )}
       />
       <div className="flex flex-col items-center gap-[0.35em]">
         {centre}
@@ -518,7 +575,13 @@ export function CompetitionSpotlight({
         side={m.away}
         crestSize="lg"
         wrap
-        className="mx-auto text-sm font-medium sm:mx-0 sm:mr-auto sm:text-base"
+        className={cn(
+          "mx-auto text-sm sm:mx-0 sm:mr-auto sm:text-base",
+          resultOf(m.away) === "lost"
+            ? "font-medium text-muted-foreground"
+            : "font-medium",
+          resultOf(m.away) === "won" && "font-semibold",
+        )}
       />
     </div>
   );
