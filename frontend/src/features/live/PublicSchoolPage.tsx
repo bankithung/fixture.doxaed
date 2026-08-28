@@ -270,49 +270,51 @@ export function PublicSchoolPage(): React.ReactElement {
           {t("Back to the schedule")}
         </Link>
 
-        <header className="flex flex-wrap items-center gap-3">
-          {/* The school's OWN badge, whole; initials when it never uploaded
-              one. Not a generic icon (owner 2026-08-28: "the logo is not
-              visible"). */}
-          <TeamCrest
-            src={school.crest}
-            name={school.institution_name}
-            size="xl"
-          />
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-semibold">
-              {school.institution_name}
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              {teamCount} {teamCount === 1 ? t("team") : t("teams")}{" "}
-              {selected === ALL
-                ? t("across all tournaments")
-                : `${t("in")} ${shown[0]!.name}`}
-            </p>
-          </div>
-          {/* One tournament at a time; the whole history is a choice away. */}
-          {entries.length > 1 ? (
-            <div
-              data-testid="school-tournament-filter"
-              className="w-full sm:w-auto sm:min-w-[16rem]"
-            >
-              <Select
-                size="sm"
-                aria-label={t("Tournament")}
-                value={selected}
-                onChange={pick}
-                options={options}
-              />
-            </div>
-          ) : null}
-        </header>
-
-        {/* ONE section: the numbers, the teams under them, the achievements
-            along the bottom. */}
+        {/* ONE section, and everything in it (owner 2026-08-28: "only one
+            section and all content should be inside that section"): who the
+            school is and which tournament is being read, then the numbers,
+            the teams under them, the achievements along the bottom. */}
         <section
           data-testid="school-record"
           className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
         >
+          <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-4">
+            {/* The school's OWN badge, whole; initials when it never uploaded
+                one. Not a generic icon (owner 2026-08-28: "the logo is not
+                visible"). */}
+            <TeamCrest
+              src={school.crest}
+              name={school.institution_name}
+              size="xl"
+            />
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-lg font-semibold">
+                {school.institution_name}
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                {teamCount} {teamCount === 1 ? t("team") : t("teams")}{" "}
+                {selected === ALL
+                  ? t("across all tournaments")
+                  : `${t("in")} ${shown[0]!.name}`}
+              </p>
+            </div>
+            {/* One tournament at a time; the whole history is a choice away. */}
+            {entries.length > 1 ? (
+              <div
+                data-testid="school-tournament-filter"
+                className="w-full sm:w-auto sm:min-w-[16rem]"
+              >
+                <Select
+                  size="sm"
+                  aria-label={t("Tournament")}
+                  value={selected}
+                  onChange={pick}
+                  options={options}
+                />
+              </div>
+            ) : null}
+          </header>
+
           <div
             data-testid="school-totals"
             className="grid grid-cols-4 divide-x divide-border border-b border-border sm:grid-cols-7"
