@@ -895,9 +895,9 @@ function PublicScheduleInner(): React.ReactElement {
           <BrandLogo className="h-7 w-7 rounded-lg" />
           {t("Fixture")}
         </Link>
-        <span className="ml-2 min-w-0 truncate text-sm text-muted-foreground">
-          {tournamentName ?? t("Schedule")}
-        </span>
+        {/* No tournament name here: the band under the tabs is its title
+            (owner 2026-08-28: "we are already writing it in the other
+            section as title"). */}
         <div className="ml-auto flex items-center gap-1">
           <ShareButton title={tournamentName} />
           <ThemeToggle />

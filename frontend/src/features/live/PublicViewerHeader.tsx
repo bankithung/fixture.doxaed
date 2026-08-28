@@ -94,9 +94,9 @@ export function PublicViewerHeader({
           <BrandLogo className="h-7 w-7 rounded-lg" />
           {t("Fixture")}
         </Link>
-        <span className="ml-2 min-w-0 truncate text-sm text-muted-foreground">
-          {tournamentName ?? ""}
-        </span>
+        {/* The tournament is named ONCE, by the band under these tabs; a
+            second copy up here was the same words twice on every phone
+            (owner 2026-08-28). `tournamentName` still titles the share. */}
         {connected ? (
           <span
             className="ml-auto flex items-center gap-1.5 text-xs font-medium text-success"
