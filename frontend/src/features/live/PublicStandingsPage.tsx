@@ -297,7 +297,7 @@ export function PublicStandingsPage(): React.ReactElement {
                         {/* On a phone the tables run edge to edge: a long
                             school name stays on one line and the table
                             scrolls sideways instead of wrapping to four. */}
-                        <div className="grid grid-cols-1 items-start gap-x-6 gap-y-3 py-2 sm:gap-y-5 sm:p-4 xl:grid-cols-2">
+                        <div className="grid grid-cols-1 items-start gap-x-6 gap-y-3 py-2 sm:gap-y-5 sm:p-4 2xl:grid-cols-2">
                           {c.groups.map((g) => (
                             <div key={g.key} className="flex min-w-0 flex-col">
                               <h4 className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-primary sm:px-0">
