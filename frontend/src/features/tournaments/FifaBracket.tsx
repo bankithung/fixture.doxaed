@@ -848,15 +848,20 @@ export function FifaBracket({
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root || typeof ResizeObserver === "undefined") return;
+    // `scrollHeight` is the content's height inside the border, and the
+    // card's `height` is border-box — so the border (offset minus client)
+    // is added back, or the last 3px of every card stayed clipped.
+    const need = (el: HTMLElement): number =>
+      el.scrollHeight + Math.max(0, el.offsetHeight - el.clientHeight);
     const measure = (): void => {
       let card = 0;
       root
         .querySelectorAll<HTMLElement>("[data-bracket-card]")
-        .forEach((el) => (card = Math.max(card, el.scrollHeight)));
+        .forEach((el) => (card = Math.max(card, need(el))));
       let ghost = 0;
       root
         .querySelectorAll<HTMLElement>("[data-bracket-ghost]")
-        .forEach((el) => (ghost = Math.max(ghost, el.scrollHeight)));
+        .forEach((el) => (ghost = Math.max(ghost, need(el))));
       setGrown((g) => {
         if (g.sig !== sig) return { sig, card, ghost };
         if (card <= g.card && ghost <= g.ghost) return g;
