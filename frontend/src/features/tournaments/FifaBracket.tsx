@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, ChevronLeft, ChevronRight, Shield } from "lucide-react";
 import type { MatchRow, MatchSource } from "@/api/tournaments";
@@ -454,6 +454,7 @@ function MatchCard({
   // everything just to open one match.
   const shell = {
     "data-testid": `${idScope ? `${idScope}-` : ""}bracket-card-${match.id}`,
+    "data-bracket-card": "",
     "aria-label": label,
     className:
       "flex w-full flex-col overflow-hidden rounded-md transition-shadow hover:shadow-lg",
@@ -814,6 +815,76 @@ export function FifaBracket({
   // A loser_of-fed match is a consolation (3rd-place playoff), NOT part of the
   // winner tree — pull it out and draw it below the Final.
   const all = columns.flatMap(([, ms]) => ms);
+
+  /** MEASURED card height (owner 2026-08-28: "in some phones the box is not
+   * responsive enough to show the whole content — names are cut off or shown
+   * only half").
+   *
+   * `fitGeom` below is an ESTIMATE: an average glyph width, a guessed line
+   * count, a cap of three lines. Every card is then a fixed-height box with
+   * `overflow: hidden`, so the moment a real card needs more — an all-caps
+   * school (caps are wider than the average), a winner's tick and score
+   * eating into the name's width, a player's name wrapping under "Player
+   * names", a phone substituting its own font — the bottom of it is simply
+   * cut off, and there is nothing the reader can do about it.
+   *
+   * So after every commit the cards are MEASURED: `scrollHeight` reports a
+   * card's full content height even while the box clips it. The tallest one
+   * becomes the card height for the whole tree (every card in a column must
+   * still line up), and the row pitch follows. It only ever grows within one
+   * set of inputs — a card that fits reports exactly its own height, so the
+   * second pass is stable — and resets when the names, the sheet or the
+   * paper mode change, so switching "Player names" off shrinks it back. A
+   * late web font re-measures too: the layout is only right in the font it
+   * is read in. */
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [grown, setGrown] = useState({ sig: "", card: 0, ghost: 0 });
+  const [fontsN, bumpFonts] = useState(0);
+  const sig = `${all
+    .map((m) => `${m.id}:${m.home_team?.name ?? ""}:${m.away_team?.name ?? ""}`)
+    .join("|")}|${rosters ? rosters.size : -1}|${wrapNames ? 1 : 0}|${
+    fitWidth ?? ""
+  }|${fitHeight ?? ""}`;
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof ResizeObserver === "undefined") return;
+    const measure = (): void => {
+      let card = 0;
+      root
+        .querySelectorAll<HTMLElement>("[data-bracket-card]")
+        .forEach((el) => (card = Math.max(card, el.scrollHeight)));
+      let ghost = 0;
+      root
+        .querySelectorAll<HTMLElement>("[data-bracket-ghost]")
+        .forEach((el) => (ghost = Math.max(ghost, el.scrollHeight)));
+      setGrown((g) => {
+        if (g.sig !== sig) return { sig, card, ghost };
+        if (card <= g.card && ghost <= g.ghost) return g;
+        return { sig, card: Math.max(card, g.card), ghost: Math.max(ghost, g.ghost) };
+      });
+    };
+    // Observing delivers one measurement straight away, after layout and
+    // before paint — so a card that needs more room is never painted clipped.
+    const ro = new ResizeObserver(measure);
+    root
+      .querySelectorAll<HTMLElement>("[data-bracket-card], [data-bracket-ghost]")
+      .forEach((el) => ro.observe(el));
+    return () => ro.disconnect();
+  }, [sig, fontsN]);
+  useEffect(() => {
+    const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+    if (!fonts?.ready) return;
+    let on = true;
+    void fonts.ready.then(() => {
+      if (on) bumpFonts((n) => n + 1);
+    });
+    return () => {
+      on = false;
+    };
+  }, []);
+  // A measurement taken against different inputs is stale: start from the
+  // estimate again, so switching "Player names" off shrinks the cards back.
+  const measured = grown.sig === sig ? grown : { card: 0, ghost: 0 };
   const consolation = all
     .filter(isConsolation)
     .sort((a, b) => a.match_no - b.match_no);
@@ -834,8 +905,21 @@ export function FifaBracket({
   // that asks for neither (the preview, the ops board) gets the board's own
   // compact card, exactly as before.
   const paper = fitWidth != null || fitHeight != null;
-  const geom =
+  const estimate =
     paper || wrapNames || rosters ? fitGeom(all, rosters, paper) : BOARD;
+  // The row pitch a ghost of this height needs, inverted from `fitGeom`'s
+  // `row`: a bye card is bounded by the pitch, so a bye that needs more
+  // room grows the whole tree rather than clipping its name.
+  const rowFor = (cardH: number): number =>
+    paper ? Math.round((cardH + 26) / 2) : cardH + 24;
+  const cardForGhost = paper
+    ? 2 * (measured.ghost + 6) - 26
+    : measured.ghost + 6 - 24;
+  const cardH = Math.max(estimate.cardH, measured.card, cardForGhost);
+  const geom: Geom =
+    cardH > estimate.cardH
+      ? { ...estimate, cardH, row: rowFor(cardH) }
+      : estimate;
   const { pos, feedersByParent, ghosts, colLabels, H, canvasW, finalX, finalY } =
     layoutBracket(bracketMatches, geom);
 
@@ -937,8 +1021,11 @@ export function FifaBracket({
   // any more than a match card does — so it grows with the printed card, up to
   // what the row pitch allows.
   const GHOST_H = geom.wrap
-    ? Math.min(geom.row - 6, Math.max(60, Math.round(geom.cardH * 0.6)))
-    : 60;
+    ? Math.min(
+        geom.row - 6,
+        Math.max(60, Math.round(geom.cardH * 0.6), measured.ghost),
+      )
+    : Math.max(60, Math.min(geom.row - 6, measured.ghost));
   const ghostLabel = (g: ByeGhost): string =>
     g.label ??
     (g.feederId != null && matchNo.get(g.feederId) != null
@@ -950,7 +1037,8 @@ export function FifaBracket({
       role="group"
       aria-label={`${ghostLabel(g)} ${t("bye, advances to the next round")}`}
       data-testid={`${idScope ? `${idScope}-` : ""}bracket-bye`}
-      className="absolute flex flex-col justify-center gap-1 rounded-md px-3 py-2"
+      data-bracket-ghost=""
+      className="absolute flex flex-col justify-center gap-1 overflow-hidden rounded-md px-3 py-2"
       style={{
         left: g.x,
         top: g.y - GHOST_H / 2,
@@ -1022,6 +1110,7 @@ export function FifaBracket({
 
   return (
     <div
+      ref={rootRef}
       role="figure"
       aria-label={t("Knockout bracket")}
       className="w-full rounded-2xl p-5 shadow-xl sm:p-6"

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { FifaBracket, sourceLabel } from "../FifaBracket";
 import type { MatchRow } from "@/api/tournaments";
@@ -315,5 +315,63 @@ describe("FifaBracket crests", () => {
     expect(bye).toHaveTextContent("Group A top 1");
     expect(within(bye).queryByTestId("team-crest")).toBeNull();
     expect(within(bye).queryByTestId("team-crest-fallback")).toBeNull();
+  });
+});
+
+describe("FifaBracket measured card height", () => {
+  /** jsdom lays nothing out, so `scrollHeight` is stubbed per element and a
+   * stand-in ResizeObserver delivers its first observation synchronously,
+   * the way a real one does right after layout. */
+  const realRO = globalThis.ResizeObserver;
+  const scrollDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+  afterEach(() => {
+    globalThis.ResizeObserver = realRO;
+    if (scrollDesc) Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollDesc);
+    else delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+  });
+  function stubLayout(heights: (el: HTMLElement) => number) {
+    class RO {
+      cb: ResizeObserverCallback;
+      constructor(cb: ResizeObserverCallback) { this.cb = cb; }
+      observe() { this.cb([], this as unknown as ResizeObserver); }
+      unobserve() {}
+      disconnect() {}
+    }
+    globalThis.ResizeObserver = RO as unknown as typeof ResizeObserver;
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() { return heights(this as HTMLElement); },
+    });
+  }
+
+  it("grows EVERY card to the tallest one's real content, and the row pitch with it", () => {
+    // Owner 2026-08-28: on some phones a bracket card cut a school name in
+    // half. The estimate said two lines; the phone drew three.
+    stubLayout((el) =>
+      el.dataset.bracketCard !== undefined
+        ? el.dataset.testid === "bracket-card-s1" ? 140 : 90
+        : 0,
+    );
+    const sf1 = m({ round_no: 1, home_team: team("a", "Christian Higher Secondary School Dimapur TT-1"), away_team: team("b", "B") }, "s1");
+    const sf2 = m({ round_no: 1, home_team: team("c", "C"), away_team: team("d", "D") }, "s2");
+    const fin = m({ round_no: 2 }, "f1");
+    render(<FifaBracket columns={[[1, [sf1, sf2]], [2, [fin]]]} wrapNames />);
+    for (const id of ["s1", "s2", "f1"]) {
+      expect(screen.getByTestId(`bracket-card-${id}`).style.height).toBe("140px");
+    }
+    // The second first-round card sits one row pitch (card + 24) below the
+    // first, so nothing overlaps.
+    const top = (id: string) =>
+      parseFloat((screen.getByTestId(`bracket-card-${id}`).parentElement as HTMLElement).style.top);
+    expect(top("s2") - top("s1")).toBe(140 + 24);
+  });
+
+  it("leaves the estimate alone when every card already fits", () => {
+    stubLayout(() => 10);
+    const sf1 = m({ round_no: 1, home_team: team("a", "A"), away_team: team("b", "B") }, "s1");
+    const sf2 = m({ round_no: 1, home_team: team("c", "C"), away_team: team("d", "D") }, "s2");
+    const fin = m({ round_no: 2 }, "f1");
+    render(<FifaBracket columns={[[1, [sf1, sf2]], [2, [fin]]]} />);
+    expect(screen.getByTestId("bracket-card-s1").style.height).toBe("82px");
   });
 });
