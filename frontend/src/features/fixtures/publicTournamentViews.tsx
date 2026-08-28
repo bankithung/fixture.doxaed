@@ -117,8 +117,20 @@ export function GroupTable({
   return (
     <div className="min-w-0 overflow-x-auto">
       {/* Fluid type: a phone gets a table it can read in one line per team, a
-          desk gets a bigger one, from the same rule (owner 2026-08-26). */}
-      <table className="w-full text-[clamp(0.72rem,0.64rem+0.26vw,0.9rem)]">
+          desk gets a bigger one, from the same rule (owner 2026-08-26).
+
+          FIXED layout, like the match sheet (owner 2026-08-28): the stat
+          columns have their widths and the team column takes what is left,
+          so a long school name truncates inside its cell instead of growing
+          the column until Pts is a screen away. The 30rem floor is what a
+          phone scrolls sideways for — a little, not a table's worth. */}
+      <table className="w-full min-w-[30rem] table-fixed text-[clamp(0.72rem,0.64rem+0.26vw,0.9rem)]">
+        <colgroup>
+          <col />
+          {heads.map((h) => (
+            <col key={h} className={h === t("Sets") ? "w-14" : "w-11"} />
+          ))}
+        </colgroup>
         <thead>
           <tr className="border-b border-border bg-muted/40 text-left text-[0.625rem] uppercase tracking-wide text-muted-foreground">
             <th className="whitespace-nowrap px-3 py-1.5 sm:px-4 sm:py-2 font-semibold">{t("Team")}</th>
@@ -139,14 +151,14 @@ export function GroupTable({
                 idx < 2 && "border-l-2 border-primary",
               )}
             >
-              <td className="whitespace-nowrap px-3 py-1.5 font-medium sm:px-4">
+              <td className="px-3 py-1.5 font-medium sm:px-4">
                 {/* Badge, then name: it sits at the row's own line height, so
-                    the stat columns keep their alignment. The name stays on
-                    ONE line — the table scrolls sideways inside its wrapper
-                    rather than folding "Holy Cross Higher Secondary School"
-                    into four rows on a phone (owner 2026-08-28). */}
-                <span className="flex items-center gap-1.5">
-                  <span className="font-tabular text-xs text-muted-foreground">
+                    the stat columns keep their alignment. The name is ONE
+                    line ending in an ellipsis (full name on hover / long
+                    press), never four rows (owner 2026-08-28). `min-w-0` is
+                    what lets a flex item shrink enough to truncate. */}
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="shrink-0 font-tabular text-xs text-muted-foreground">
                     {idx + 1}
                   </span>
                   <TeamCrest src={r.crest} name={r.name} size="sm" />
@@ -154,12 +166,15 @@ export function GroupTable({
                     <Link
                       to={routes.publicTeam(slug, id, r.team_id)}
                       data-testid={`standing-team-link-${r.team_id}`}
-                      className="rounded-sm underline-offset-2 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      title={r.name}
+                      className="min-w-0 truncate rounded-sm underline-offset-2 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {r.name}
                     </Link>
                   ) : (
-                    r.name
+                    <span title={r.name} className="min-w-0 truncate">
+                      {r.name}
+                    </span>
                   )}
                 </span>
               </td>
@@ -180,6 +195,50 @@ export function GroupTable({
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * The public board's own header band (owner 2026-08-28): the tournament name,
+ * a one-line count / live state, and any actions — the Matches page's band,
+ * worn by every tab so the public viewer is ONE surface, not five styles.
+ * There is no per-tab title: the tab strip already says where you are.
+ */
+export function BoardBand({
+  title,
+  meta,
+  actions,
+  testid,
+}: {
+  title: string | undefined;
+  meta?: React.ReactNode;
+  actions?: React.ReactNode;
+  testid?: string;
+}): React.ReactElement {
+  return (
+    /* The band PRINTS: on paper the tournament name is the sheet's heading
+       (the Schools and Results boards print as they are). Only the actions
+       are screen furniture. */
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 sm:px-4">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
+          {title ?? ""}
+        </h1>
+        {meta ? (
+          <span
+            data-testid={testid}
+            className="inline-flex items-center gap-1.5 font-tabular text-xs text-muted-foreground"
+          >
+            {meta}
+          </span>
+        ) : null}
+      </div>
+      {actions ? (
+        <div className="ml-auto flex shrink-0 items-center gap-2 print:hidden">
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }

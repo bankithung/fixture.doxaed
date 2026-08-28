@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/Select";
 import { PublicViewerHeader } from "@/features/live/PublicViewerHeader";
-import { Chip, FilterFab } from "@/features/fixtures/publicTournamentViews";
+import { BoardBand, Chip, FilterFab } from "@/features/fixtures/publicTournamentViews";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { t } from "@/lib/t";
 import { VideoCard } from "./VideoCard";
@@ -168,39 +168,41 @@ export function PublicVideosPage(): React.ReactElement {
         active="videos"
         connected={false}
       />
-      <main className="flex w-full max-w-full min-w-0 flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
-        <section className="flex w-full min-w-0 flex-col gap-4 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-5">
-          <header className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
-                {t("Videos")}
-              </h1>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {q.data
-                  ? `${shownCount} ${shownCount === 1 ? t("video") : t("videos")}${
-                      activeFilters
-                        ? ` ${t("of")} ${q.data.totals.videos}`
-                        : ` · ${q.data.totals.albums} ${
-                            q.data.totals.albums === 1 ? t("album") : t("albums")
-                          }`
-                    }`
-                  : t("Match footage from the meet")}
-              </p>
-            </div>
-            {activeFilters && !isMobile ? (
-              <button
-                type="button"
-                data-testid="videos-reset"
-                onClick={() =>
-                  setParam({ album: null, day: null, school: null, tag: null })
-                }
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary"
-              >
-                <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
-                {t("Clear filters")}
-              </button>
-            ) : null}
-          </header>
+      <main className="flex w-full max-w-full min-w-0 flex-1 flex-col p-0 sm:px-6 sm:py-4 lg:px-8">
+        <section className="flex w-full min-w-0 flex-col border-y border-border bg-card sm:rounded-xl sm:border sm:shadow-sm">
+          {/* The Matches page's band (owner 2026-08-28): tournament name and
+              a one-line count, no per-tab title. */}
+          <BoardBand
+            title={name}
+            testid="videos-indicator"
+            meta={
+              q.data
+                ? `${shownCount} ${shownCount === 1 ? t("video") : t("videos")}${
+                    activeFilters
+                      ? ` ${t("of")} ${q.data.totals.videos}`
+                      : ` · ${q.data.totals.albums} ${
+                          q.data.totals.albums === 1 ? t("album") : t("albums")
+                        }`
+                  }`
+                : null
+            }
+            actions={
+              activeFilters && !isMobile ? (
+                <button
+                  type="button"
+                  data-testid="videos-reset"
+                  onClick={() =>
+                    setParam({ album: null, day: null, school: null, tag: null })
+                  }
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary"
+                >
+                  <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("Clear filters")}
+                </button>
+              ) : null
+            }
+          />
+          <div className="flex flex-col gap-4 p-3 sm:p-5">
 
           {q.isLoading ? (
             <div
@@ -269,6 +271,7 @@ export function PublicVideosPage(): React.ReactElement {
               )}
             </>
           )}
+          </div>
         </section>
 
         {isMobile && q.data && q.data.albums.length > 0 ? (

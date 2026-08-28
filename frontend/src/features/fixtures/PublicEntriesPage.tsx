@@ -20,7 +20,7 @@ import { PublicViewerHeader } from "@/features/live/PublicViewerHeader";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { Chip, FilterFab } from "./publicTournamentViews";
+import { BoardBand, Chip, FilterFab } from "./publicTournamentViews";
 import {
   buildBands,
   buildColumns,
@@ -291,43 +291,46 @@ export function PublicEntriesPage(): React.ReactElement {
         active="entries"
         connected={false}
       />
-      <main className="flex w-full max-w-full min-w-0 flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
-        {/* ONE section: heading, totals, filters and the sheet are one board. */}
-        <section className="flex w-full flex-col gap-4 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-5">
-          <header className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
-                {t("Schools")}
-              </h1>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                <span className="hidden print:inline">
-                  {tournamentName}
-                  {" · "}
-                </span>
-                {t("Which competitions each school entered")}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 print:hidden">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={downloadCsv}
-                data-testid="entries-csv"
-              >
-                <Download className="mr-1.5 h-4 w-4" />
-                {t("CSV")}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => window.print()}
-                data-testid="entries-print"
-              >
-                <Printer className="mr-1.5 h-4 w-4" />
-                {t("Print / PDF")}
-              </Button>
-            </div>
-          </header>
+      <main className="flex w-full max-w-full min-w-0 flex-1 flex-col p-0 sm:px-6 sm:py-4 lg:px-8">
+        {/* ONE section, built like the Matches page (owner 2026-08-28): the
+            tournament name is its header band, and totals, filters and the
+            sheet sit straight under it — edge to edge on a phone. */}
+        <section className="flex w-full min-w-0 flex-col border-y border-border bg-card print:border-0 sm:rounded-xl sm:border sm:shadow-sm">
+          <BoardBand
+            title={tournamentName}
+            testid="entries-indicator"
+            meta={
+              q.data
+                ? `${q.data.totals.schools} ${t("schools")} · ${q.data.totals.competitions} ${t("competitions")} · ${q.data.totals.teams} ${t("entries")}`
+                : null
+            }
+            actions={
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={downloadCsv}
+                  data-testid="entries-csv"
+                >
+                  <Download className="mr-1.5 h-4 w-4" />
+                  {t("CSV")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.print()}
+                  data-testid="entries-print"
+                >
+                  <Printer className="mr-1.5 h-4 w-4" />
+                  {t("Print / PDF")}
+                </Button>
+              </>
+            }
+          />
+          <p className="hidden px-3 pt-3 text-xs text-muted-foreground print:block">
+            {tournamentName} · {t("Which competitions each school entered")}
+          </p>
+          <div className="flex flex-col gap-4 p-3 sm:p-5">
 
           {q.isLoading ? (
             <div
@@ -614,6 +617,7 @@ export function PublicEntriesPage(): React.ReactElement {
               </details>
             </>
           )}
+          </div>
         </section>
 
       {isMobile && q.data && allRows.length > 0 ? (

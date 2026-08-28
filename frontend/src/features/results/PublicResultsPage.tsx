@@ -12,6 +12,7 @@ import { PublicViewerHeader } from "@/features/live/PublicViewerHeader";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import {
+  BoardBand,
   Chip,
   FilterFab,
   Segment,
@@ -312,48 +313,49 @@ export function PublicResultsPage(): React.ReactElement {
       {/* ONE section (owner 2026-08-25). The heading, the totals, the view
           switcher, the filters and the sheet itself are one board: read across
           four floating cards, a medal tally is four things rather than one. */}
-      <main className="flex w-full max-w-full min-w-0 flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
-       <section className="flex w-full min-w-0 flex-col gap-4 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-5">
-        <header className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">
-              {t("Results")}
-            </h1>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              <span className="hidden print:inline">
-                {tournamentName}
-                {" · "}
-              </span>
-              {totals
-                ? `${totals.decided} ${t("of")} ${totals.competitions} ${
-                    totals.competitions === 1
-                      ? t("competition decided")
-                      : t("competitions decided")
-                  }`
-                : t("Medal tally, points and category champions")}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 print:hidden">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={downloadCsv}
-              data-testid="results-csv"
-            >
-              <Download className="mr-1.5 h-4 w-4" />
-              {t("CSV")}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => window.print()}
-              data-testid="results-print"
-            >
-              <Printer className="mr-1.5 h-4 w-4" />
-              {t("Print / PDF")}
-            </Button>
-          </div>
-        </header>
+      <main className="flex w-full max-w-full min-w-0 flex-1 flex-col p-0 sm:px-6 sm:py-4 lg:px-8">
+       <section className="flex w-full min-w-0 flex-col border-y border-border bg-card print:border-0 sm:rounded-xl sm:border sm:shadow-sm">
+        {/* The Matches page's band (owner 2026-08-28): tournament name and a
+            one-line count, no per-tab title — the tab strip says "Results". */}
+        <BoardBand
+          title={tournamentName}
+          testid="results-indicator"
+          meta={
+            totals
+              ? `${totals.decided} ${t("of")} ${totals.competitions} ${
+                  totals.competitions === 1
+                    ? t("competition decided")
+                    : t("competitions decided")
+                }`
+              : null
+          }
+          actions={
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={downloadCsv}
+                data-testid="results-csv"
+              >
+                <Download className="mr-1.5 h-4 w-4" />
+                {t("CSV")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.print()}
+                data-testid="results-print"
+              >
+                <Printer className="mr-1.5 h-4 w-4" />
+                {t("Print / PDF")}
+              </Button>
+            </>
+          }
+        />
+        <p className="hidden px-3 pt-3 text-xs text-muted-foreground print:block">
+          {tournamentName} · {t("Medal tally, points and category champions")}
+        </p>
+        <div className="flex flex-col gap-4 p-3 sm:p-5">
 
         {q.isLoading ? (
           <div
@@ -567,6 +569,7 @@ export function PublicResultsPage(): React.ReactElement {
             </div>
           </>
         )}
+        </div>
        </section>
 
       {/* The match centre's floating pill, on every board (owner 2026-08-26).

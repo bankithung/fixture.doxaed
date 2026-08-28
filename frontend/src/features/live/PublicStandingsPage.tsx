@@ -8,6 +8,7 @@ import {
 } from "@/features/fixtures/publicTournament";
 import {
   Bookmark,
+  BoardBand,
   Chip,
   FilterFab,
   GroupTable,
@@ -206,29 +207,27 @@ export function PublicStandingsPage(): React.ReactElement {
             band and the tables sit straight under it. Edge to edge on a phone
             (the screen is the card), a card on a desk. */}
         <section className="flex min-w-0 flex-1 flex-col border-y border-border bg-card print:border-0 sm:rounded-xl sm:border sm:shadow-sm">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-3 py-3 print:hidden sm:px-4">
-            <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
-              {tournamentName ?? t("Standings")}
-            </h1>
-            {!loading && !scheduleQ.isError ? (
-              <span
-                data-testid="standings-indicator"
-                className="inline-flex items-center gap-1.5 font-tabular text-xs text-muted-foreground"
-              >
-                {shownTables} {shownTables === 1 ? t("table") : t("tables")} ·{" "}
-                {connected ? (
-                  <>
-                    <span className="inline-flex h-2 w-2 rounded-full bg-primary" />
-                    <span className="font-medium text-primary">
-                      {t("live updates")}
-                    </span>
-                  </>
-                ) : (
-                  t("updates automatically")
-                )}
-              </span>
-            ) : null}
-          </div>
+          <BoardBand
+            title={tournamentName}
+            testid="standings-indicator"
+            meta={
+              !loading && !scheduleQ.isError ? (
+                <>
+                  {shownTables} {shownTables === 1 ? t("table") : t("tables")} ·{" "}
+                  {connected ? (
+                    <>
+                      <span className="inline-flex h-2 w-2 rounded-full bg-primary" />
+                      <span className="font-medium text-primary">
+                        {t("live updates")}
+                      </span>
+                    </>
+                  ) : (
+                    t("updates automatically")
+                  )}
+                </>
+              ) : null
+            }
+          />
 
           {loading ? (
             <div aria-busy="true" className="m-3 h-48 animate-pulse rounded-xl bg-muted/40 sm:m-4" />
@@ -297,7 +296,7 @@ export function PublicStandingsPage(): React.ReactElement {
                         {/* On a phone the tables run edge to edge: a long
                             school name stays on one line and the table
                             scrolls sideways instead of wrapping to four. */}
-                        <div className="grid grid-cols-1 items-start gap-x-6 gap-y-3 py-2 sm:gap-y-5 sm:p-4 2xl:grid-cols-2">
+                        <div className="grid grid-cols-1 items-start gap-x-6 gap-y-3 py-2 sm:gap-y-5 sm:p-4 xl:grid-cols-2">
                           {c.groups.map((g) => (
                             <div key={g.key} className="flex min-w-0 flex-col">
                               <h4 className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-primary sm:px-0">

@@ -250,11 +250,15 @@ describe("PublicResultsPage", () => {
     expect(await screen.findByTestId("students-table")).toBeInTheDocument();
   });
 
-  it("has a heading, which the printed sheet needs", async () => {
+  it("is headed by the tournament name, which the printed sheet needs", async () => {
     renderPage();
+    // No 'Results' title: the tab strip says that (owner 2026-08-28). The
+    // band carries the tournament name and the decided count instead.
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Results" }),
+      await screen.findByRole("heading", { level: 1, name: "Demo Meet" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "Results" })).toBeNull();
+    expect(screen.getByTestId("results-indicator")).toHaveTextContent(/competitions decided/);
   });
 
   it("says so plainly when nothing has been decided", async () => {
