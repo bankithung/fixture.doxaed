@@ -29,6 +29,9 @@ export interface PublicTeamRecord {
   /** Signed crest URL, "" when the team has no badge. */
   crest?: string;
   leaf_key: string;
+  /** The competition as people say it ("Table Tennis · U-14 · Boys ·
+   * Singles"); the raw `leaf_key` when the leaf is no longer configured. */
+  leaf_label?: string;
   played: number;
   wins: number;
   draws: number;
@@ -63,24 +66,38 @@ export interface SchoolHistorySeason {
     starts_at: string | null;
     status: string;
     totals: SchoolTotals;
-    teams: {
-      team_id: string;
-      team_name: string;
-      /** Signed crest URL, "" when the team has no badge. */
-      crest?: string;
-      leaf_key: string;
-      played: number;
-      wins: number;
-      draws: number;
-      losses: number;
-    }[];
+    teams: SchoolTeamRow[];
   }[];
+}
+
+/** One team of a school in ONE tournament — the row the school page lists,
+ * for the current tournament and for any past one alike. */
+export interface SchoolTeamRow {
+  team_id: string;
+  team_name: string;
+  /** Signed crest URL, "" when the team has no badge. */
+  crest?: string;
+  leaf_key: string;
+  leaf_label?: string;
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  scored?: number;
+  conceded?: number;
+  difference?: number;
+  form?: ("W" | "D" | "L")[];
 }
 
 export interface PublicSchoolRecord {
   institution_id: string;
   institution_name: string;
+  /** The school's own badge (signed URL), "" when it has none. */
+  crest?: string;
   tournament_id: string;
+  tournament_name?: string;
+  tournament_slug?: string;
+  season?: string;
   totals: SchoolTotals;
   teams: PublicTeamRecord[];
   badges: PublicBadge[];

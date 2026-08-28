@@ -20,6 +20,7 @@ from collections import defaultdict
 
 from apps.matches.models import Match, MatchStatus
 from apps.teams.services.crest import crest_url, team_crest
+from apps.tournaments.services.sports import leaf_label
 
 _FINAL = (MatchStatus.COMPLETED, MatchStatus.WALKOVER)
 
@@ -92,6 +93,11 @@ def team_record(team) -> dict:
         "team_name": team.name,
         "crest": team_crest(team),
         "leaf_key": team.leaf_key,
+        # The competition as a READABLE label ("Table Tennis · U-14 · Boys ·
+        # Singles"), because a school page was printing the raw key
+        # (``table_tennis.u_14.boys.singles``) beside every team (owner
+        # 2026-08-28). Falls back to the key when the leaf is gone.
+        "leaf_label": leaf_label(team.tournament.sports, team.leaf_key),
         "played": len(played),
         "wins": wins,
         "draws": draws,
@@ -116,8 +122,11 @@ def institution_record(institution) -> dict:
 
     teams = Team.objects.filter(
         institution=institution, deleted_at__isnull=True,
-    ).exclude(status=TeamStatus.WITHDRAWN).select_related("institution")
+    ).exclude(status=TeamStatus.WITHDRAWN).select_related(
+        "institution", "tournament"
+    )
     rows = [team_record(t) for t in teams]
+    tournament = institution.tournament
     totals = {
         k: sum(r[k] for r in rows)
         for k in ("played", "wins", "draws", "losses", "scored", "conceded")
@@ -130,6 +139,12 @@ def institution_record(institution) -> dict:
         # the team overrides it, so this is the crest of the rollup itself.
         "crest": crest_url(institution.logo_ref),
         "tournament_id": str(institution.tournament_id),
+        # Named, so the school page can say WHICH tournament these numbers
+        # are (it now filters by tournament — owner 2026-08-28).
+        "tournament_name": tournament.name,
+        "tournament_slug": tournament.slug,
+        "season": tournament.season
+        or (str(tournament.starts_at.year) if tournament.starts_at else ""),
         "totals": totals,
         "teams": rows,
     }
@@ -182,9 +197,14 @@ def school_history(name: str) -> list[dict]:
             "starts_at": t.starts_at.isoformat() if t.starts_at else None,
             "status": t.status,
             "totals": rec["totals"],
+            # The same row the current tournament's teams get, minus the
+            # per-match results: the school page shows any tournament with
+            # the one layout, so a past year must carry form and scores too.
             "teams": [
                 {k: r[k] for k in ("team_id", "team_name", "crest", "leaf_key",
-                                   "played", "wins", "draws", "losses")}
+                                   "leaf_label", "played", "wins", "draws",
+                                   "losses", "scored", "conceded",
+                                   "difference", "form")}
                 for r in rec["teams"]
             ],
         })

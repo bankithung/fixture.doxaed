@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Maximize2, Minimize2, Trophy } from "lucide-react";
 import type {
@@ -14,7 +14,7 @@ import { t } from "@/lib/t";
 import {
   shortGroup,
   spotlightNextUp,
-  spotlightPick,
+  spotlightPicks,
   winnerOf,
   type SpotlightKind,
 } from "./publicTournament";
@@ -38,6 +38,16 @@ import { LivePulse, TeamName, fmtKickoff } from "./publicMatchCard";
  * over live updates. A live match that finishes stops matching `live` and the
  * next one takes the board on the following tick, which is what "once done we
  * will show the next match" asks for, with no timer to drift.
+ *
+ * **One board per live match** (owner 2026-08-28: "two girls matches are going
+ * on but in the now playing only 1 is showing — show the other one too, both
+ * separated, each with their own full screen button"). `spotlightPicks` hands
+ * back EVERY live match, and each becomes its own `MatchSpotlight`: its own
+ * section, its own full-screen state, its own button — so the projector at
+ * court T2 can show M12 while the one at T1 shows M11. `MatchSpotlight` is
+ * also what the Today band now lays out, one per live court, because that
+ * band had no full-screen button at all and a second copy of the same card
+ * was the wrong fix.
  *
  * ## The board (owner 2026-08-26, second pass)
  *
@@ -264,17 +274,34 @@ function BoardSide({
     </div>
   );
 }
-export function CompetitionSpotlight({
+/** ONE match on its own board, with its own full-screen button. */
+export function MatchSpotlight({
+  match: m,
+  kind,
   matches,
   timeZone,
   title,
+  label,
+  testid = "competition-spotlight",
+  frame = "band",
 }: {
-  /** Every match of ONE competition. The pick is made here, not by the page. */
+  match: PublicScheduleMatch;
+  kind: SpotlightKind;
+  /** The matches "Up next" is chosen from once the board is full screen —
+   * the competition's on a competition page, the day's on Today. */
   matches: PublicScheduleMatch[];
   timeZone: string;
   /** The competition's own name, so the board says what it is showing. */
   title?: string;
-}): React.ReactElement | null {
+  /** What the heading says while NOT full screen. Defaults to the state
+   * ("Now playing"); the Today band passes the competition chips instead,
+   * because it names the state once above all its tiles. */
+  label?: ReactNode;
+  testid?: string;
+  /** `band`: full-width strip under the toolbar (a competition page).
+   * `tile`: a rounded card inside a list (the Today band). */
+  frame?: "band" | "tile";
+}): React.ReactElement {
   const [board, setBoard] = useState(false);
   const ref = useRef<HTMLElement>(null);
 
@@ -298,9 +325,6 @@ export function CompetitionSpotlight({
     };
   }, []);
 
-  const pick = spotlightPick(matches);
-  if (!pick) return null;
-  const { match: m, kind } = pick;
   const next = board ? spotlightNextUp(matches, m) : null;
   const comp = title || m.leaf_label;
 
@@ -344,12 +368,12 @@ export function CompetitionSpotlight({
       {kind === "live" ? <LivePulse /> : null}
       <h2
         className={cn(
-          "font-semibold",
+          "flex min-w-0 items-center gap-2 font-semibold",
           board ? BOARD.bar : "text-sm",
           kind === "live" && "text-primary",
         )}
       >
-        {t(KIND_LABEL[kind])}
+        {!board && label != null ? label : t(KIND_LABEL[kind])}
       </h2>
       {board ? (
         <span className={cn("min-w-0 truncate text-muted-foreground", BOARD.bar)}>
@@ -622,10 +646,15 @@ export function CompetitionSpotlight({
     return (
       <section
         ref={ref}
-        data-testid="competition-spotlight"
+        data-testid={testid}
         data-kind={kind}
         data-board="off"
-        className="flex flex-col gap-3 border-b border-border bg-card p-3 sm:p-4"
+        className={cn(
+          "flex flex-col gap-3 bg-card p-3 sm:p-4",
+          frame === "tile"
+            ? "rounded-xl border border-border shadow-sm"
+            : "border-b border-border",
+        )}
       >
         <div className="flex items-center gap-2">{heading}</div>
         {body}
@@ -636,7 +665,7 @@ export function CompetitionSpotlight({
   return (
     <section
       ref={ref}
-      data-testid="competition-spotlight"
+      data-testid={testid}
       data-kind={kind}
       data-board="on"
       className="fixed inset-0 z-50 flex flex-col bg-card"
@@ -671,5 +700,39 @@ export function CompetitionSpotlight({
         </p>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * What a competition page leads with: every live match as its own board, or
+ * the one next / last match when nothing is on. Renders nothing only for an
+ * empty competition.
+ */
+export function CompetitionSpotlight({
+  matches,
+  timeZone,
+  title,
+}: {
+  /** Every match of ONE competition. The pick is made here, not by the page. */
+  matches: PublicScheduleMatch[];
+  timeZone: string;
+  /** The competition's own name, so the board says what it is showing. */
+  title?: string;
+}): React.ReactElement | null {
+  const picks = spotlightPicks(matches);
+  if (picks.length === 0) return null;
+  return (
+    <>
+      {picks.map((pick) => (
+        <MatchSpotlight
+          key={pick.match.id}
+          match={pick.match}
+          kind={pick.kind}
+          matches={matches}
+          timeZone={timeZone}
+          title={title}
+        />
+      ))}
+    </>
   );
 }

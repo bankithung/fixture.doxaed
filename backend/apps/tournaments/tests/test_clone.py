@@ -133,3 +133,50 @@ def test_clone_is_idempotent_on_event_id():
     b = clone_tournament(source=src, target_org=org, by=cloner, event_id=eid)
     assert a.id == b.id
     assert Tournament.objects.filter(name__startswith="Idempotent Cup").count() == 2
+
+
+def test_clone_survives_events_that_carry_a_client_event_id():
+    """Prod 2026-08-28: cloning the live ANPSA tournament failed with
+    ``duplicate key value violates unique constraint
+    "matches_match_event_event_id_key"``. Every real score comes in with the
+    scorer's idempotency ``event_id`` (invariant 3), and the copy carried it
+    over into a column that is unique across the table. A copied event was
+    never submitted by anyone — it has no client key."""
+    from apps.fixtures.services.generate import generate_round_robin
+    from apps.matches.models import MatchEvent
+    from apps.matches.services.events import record_match_event
+    from apps.teams.models import Institution, Team
+
+    owner = _user("keyed-src@example.com")
+    cloner = _user("keyed-clone@example.com")
+    src = create_tournament(user=owner, name="Keyed Cup")
+    inst = Institution.objects.create(
+        organization=src.organization, tournament=src,
+        slug="gps", name="Govt Primary School",
+    )
+    for n in ("Alpha", "Beta"):
+        Team.objects.create(
+            organization=src.organization, tournament=src,
+            institution=inst, slug=n.lower(), name=n,
+            leaf_key="table_tennis.u_14.boys.singles",
+        )
+    team_a = Team.objects.get(name="Alpha")
+    src.draw_config = {
+        "table_tennis.u_14.boys.singles": {"format": "round_robin", "legs": 1}
+    }
+    src.save()
+    first = generate_round_robin(
+        tournament=src, leaf_key="table_tennis.u_14.boys.singles"
+    )[0]
+    record_match_event(
+        match=first, event_type="GOAL", by=owner, team=team_a,
+        event_id="22222222-2222-5222-8222-222222222222",
+    )
+    assert MatchEvent.objects.filter(tournament=src, event_id__isnull=False).exists()
+
+    clone = clone_tournament(source=src, target_org=cloner_org(cloner), by=cloner)
+
+    copied = MatchEvent.objects.filter(tournament=clone)
+    assert copied.count() == MatchEvent.objects.filter(tournament=src).count()
+    # The source keeps its keys; the copies have none.
+    assert not copied.filter(event_id__isnull=False).exists()

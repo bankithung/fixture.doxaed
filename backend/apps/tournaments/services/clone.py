@@ -384,9 +384,17 @@ def clone_tournament(
                     player_id=maps.players.get(str(e.player_id)),
                     related_player_id=maps.players.get(str(e.related_player_id)),
                     created_by=e.created_by,
+                    # ``event_id`` is the CLIENT's idempotency key (invariant 3)
+                    # and unique across the whole table, so carrying it over
+                    # made the copy collide with its own source the moment a
+                    # tournament with a scored match was cloned (prod
+                    # 2026-08-28: ``duplicate key value violates unique
+                    # constraint "matches_match_event_event_id_key"``). A
+                    # copied event was never submitted by anyone; it has no
+                    # key.
                     **_clone_fields(e, exclude={
                         "organization", "tournament", "match", "team", "player",
-                        "related_player", "voids", "created_by",
+                        "related_player", "voids", "created_by", "event_id",
                     }),
                 )
                 if e.voids_id:
@@ -432,8 +440,10 @@ def clone_tournament(
                         match_id=maps.matches[str(i.match_id)],
                         reported_by=i.reported_by,
                         player_id=maps.players.get(str(i.player_id)),
+                        # Same unique client key as the events above.
                         **_clone_fields(i, exclude={
                             "organization", "match", "reported_by", "player",
+                            "event_id",
                         }),
                     )
                     for i in MatchIncident.objects.filter(match_id__in=maps.matches.keys())

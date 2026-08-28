@@ -428,24 +428,42 @@ function whenOf(m: PublicScheduleMatch): number {
 export function spotlightPick(
   matches: PublicScheduleMatch[],
 ): Spotlight | null {
+  return spotlightPicks(matches)[0] ?? null;
+}
+
+/**
+ * EVERY match the competition is about right now (owner 2026-08-28: "two
+ * girls matches are going on but in the now playing only 1 is showing — we
+ * need to show the other one too, both separated, each with their own full
+ * screen button").
+ *
+ * The first cut picked ONE live match, on the reading that a category page is
+ * either one match or none. Two courts CAN run one category at once — M11 and
+ * M12 of the sepak girls were both in play on the same afternoon — and the
+ * second match simply vanished from the top of the page while its row sat
+ * "In play" in the table below. So: while anything is live, ALL of it, in
+ * kickoff order; the "next" and "done" fallbacks stay single, because a list
+ * of what has not started is the sheet's job, not the spotlight's.
+ */
+export function spotlightPicks(matches: PublicScheduleMatch[]): Spotlight[] {
   const live = matches
     .filter((m) => LIVE_STATUSES.has(m.status))
     .sort((a, b) => whenOf(a) - whenOf(b));
-  if (live[0]) return { match: live[0], kind: "live" };
+  if (live.length > 0) return live.map((match) => ({ match, kind: "live" }));
 
   const upcoming = matches
     .filter((m) => !LIVE_STATUSES.has(m.status) && !FINAL_STATUSES.has(m.status))
     // An unscheduled match is not "next" while a scheduled one exists, but it
     // is still better than nothing once every timed match has been played.
     .sort((a, b) => whenOf(a) - whenOf(b));
-  if (upcoming[0]) return { match: upcoming[0], kind: "next" };
+  if (upcoming[0]) return [{ match: upcoming[0], kind: "next" }];
 
   const done = matches
     .filter((m) => FINAL_STATUSES.has(m.status))
     .sort((a, b) => whenOf(b) - whenOf(a));
-  if (done[0]) return { match: done[0], kind: "done" };
+  if (done[0]) return [{ match: done[0], kind: "done" }];
 
-  return null;
+  return [];
 }
 
 /** The match that follows the spotlight one, so a full-screen board can say
@@ -463,6 +481,13 @@ export function spotlightNextUp(
         !FINAL_STATUSES.has(m.status),
     )
     .sort((a, b) => whenOf(a) - whenOf(b));
+  // A board stands beside ONE court. With two boards up at once (or the
+  // Today band, where every court is live), "up next" means the next match
+  // on THIS court when there is one; the earliest anywhere otherwise.
+  if (current.venue) {
+    const sameCourt = rest.find((m) => m.venue === current.venue);
+    if (sameCourt) return sameCourt;
+  }
   return rest[0] ?? null;
 }
 

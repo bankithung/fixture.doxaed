@@ -4,7 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { PublicScheduleMatch } from "@/api/tournaments";
 import { CompetitionSpotlight } from "../CompetitionSpotlight";
-import { spotlightNextUp, spotlightPick } from "../publicTournament";
+import {
+  spotlightNextUp,
+  spotlightPick,
+  spotlightPicks,
+} from "../publicTournament";
 
 const BASE = {
   leaf_key: "tt.u14.boys.singles",
@@ -99,6 +103,39 @@ describe("spotlightPick", () => {
     expect(pick?.match.id).toBe("timed");
   });
 
+  it("keeps EVERY live match, in kickoff order, and only one of anything else", () => {
+    // Two courts ran the sepak girls at once (M11 and M12, owner 2026-08-28)
+    // and the second vanished from the top of the page.
+    const picks = spotlightPicks([
+      m({ id: "later", status: "live", scheduled_at: "2026-08-28T09:05:00Z" }),
+      m({ id: "next", scheduled_at: "2026-08-28T10:00:00Z" }),
+      m({ id: "sooner", status: "live", scheduled_at: "2026-08-28T08:40:00Z" }),
+    ]);
+    expect(picks.map((p) => [p.match.id, p.kind])).toEqual([
+      ["sooner", "live"],
+      ["later", "live"],
+    ]);
+    expect(
+      spotlightPicks([
+        m({ id: "a", scheduled_at: "2026-08-28T10:00:00Z" }),
+        m({ id: "b", scheduled_at: "2026-08-28T11:00:00Z" }),
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it("names the next match on the SAME court first", () => {
+    const here = m({ id: "live", status: "live", venue: "Mph · T2" });
+    const next = spotlightNextUp(
+      [
+        here,
+        m({ id: "other-court", venue: "Mph · T1", scheduled_at: "2026-08-28T09:00:00Z" }),
+        m({ id: "same-court", venue: "Mph · T2", scheduled_at: "2026-08-28T09:30:00Z" }),
+      ],
+      here,
+    );
+    expect(next?.id).toBe("same-court");
+  });
+
   it("has nothing to show for an empty competition", () => {
     expect(spotlightPick([])).toBeNull();
   });
@@ -130,6 +167,38 @@ describe("CompetitionSpotlight", () => {
     const s = screen.getByTestId("competition-spotlight");
     expect(s).toHaveAttribute("data-kind", "live");
     expect(screen.getByText("Now playing")).toBeInTheDocument();
+  });
+
+  it("shows BOTH live matches, separated, each with its own full screen button", async () => {
+    mount([
+      m({ id: "m11", status: "live", home_score: 1, away_score: 0, scheduled_at: "2026-08-28T08:40:00Z" }),
+      m({
+        id: "m12",
+        status: "live",
+        home_score: 0,
+        away_score: 0,
+        scheduled_at: "2026-08-28T09:05:00Z",
+        home: { id: "c", name: "Charlie", short_name: "C", school: "Charlie" },
+        away: { id: "d", name: "Delta", short_name: "D", school: "Delta" },
+      }),
+    ]);
+    const boards = screen.getAllByTestId("competition-spotlight");
+    expect(boards).toHaveLength(2);
+    expect(boards[0]).toHaveTextContent("Alpha");
+    expect(boards[1]).toHaveTextContent("Charlie");
+    const buttons = screen.getAllByTestId("spotlight-fullscreen");
+    expect(buttons).toHaveLength(2);
+
+    // Full screen on one leaves the other where it was.
+    Object.defineProperty(Element.prototype, "requestFullscreen", {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockResolvedValue(undefined),
+    });
+    await userEvent.click(buttons[1]!);
+    const after = screen.getAllByTestId("competition-spotlight");
+    expect(after[1]).toHaveAttribute("data-board", "on");
+    expect(after[0]).toHaveAttribute("data-board", "off");
   });
 
   it("still leads with something when no match is on", () => {

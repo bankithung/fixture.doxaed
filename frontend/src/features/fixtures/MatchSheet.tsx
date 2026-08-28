@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   type PublicRosterPlayer,
   type PublicScheduleMatch,
@@ -209,6 +209,24 @@ export interface MatchSheetProps {
   rosters?: RosterIndex;
 }
 
+/** A plain click anywhere on a row opens its match; see the row for why this
+ * is a handler and not a stretched link. Modified clicks (new tab), clicks on
+ * a control or link of the row's own, and a text selection are left to do
+ * what they already do. */
+function openRow(
+  e: React.MouseEvent<HTMLTableRowElement>,
+  href: string,
+  navigate: (to: string) => void,
+): void {
+  if (e.defaultPrevented || e.button !== 0) return;
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const target = e.target as Element;
+  if (target.closest("a, button, input, select, textarea, [role='button']"))
+    return;
+  if (window.getSelection()?.toString()) return;
+  navigate(href);
+}
+
 export function MatchSheet({
   matches,
   timeZone,
@@ -221,6 +239,7 @@ export function MatchSheet({
   linkFor,
   rosters,
 }: MatchSheetProps): React.ReactElement {
+  const navigate = useNavigate();
   const heads = [
     {
       key: "no",
@@ -292,29 +311,42 @@ export function MatchSheet({
             const sv = liveSetView(m);
             const win = winnerOf(m);
             const no = numbers.get(m.id);
+            const href = linkFor ? linkFor(m) : routes.liveViewer(m.id);
             return (
               <tr
                 key={m.id}
                 data-testid={`${idScope}-row-${m.id}`}
-                // `relative` on the row is what lets ONE link cover it; every
-                // cell's own links sit above it on z-10.
+                // The whole row opens the match: a CLICK HANDLER, not a
+                // stretched link. The first cut put `relative` on the <tr>
+                // and an `absolute inset-0` link inside it — and Safari does
+                // not honour `position: relative` on a table row, so on
+                // every iPhone the overlay grew to the nearest positioned
+                // ancestor and sat, invisible, over the tabs and the
+                // toolbar: a tap on "Standings" opened the last match of the
+                // page as a drawer instead (owner 2026-08-28: "no iphone
+                // users can tap and check the other pages"). The real link
+                // now stays inside its own cell (which CAN be `relative`),
+                // for keyboards, screen readers and middle-click; the rest
+                // of the row hands a plain click to the same place, and
+                // leaves alone anything that is already a control, a
+                // modified click, or a text selection in progress.
+                onClick={(e) => openRow(e, href, navigate)}
                 className={cn(
-                  "relative transition-colors hover:bg-accent focus-within:bg-accent",
+                  "cursor-pointer transition-colors hover:bg-accent focus-within:bg-accent",
                   live && "bg-primary/[0.04]",
                 )}
               >
                 <td
                   data-col="no"
                   className={cn(
-                    "px-3 py-2 align-middle",
+                    "relative px-3 py-2 align-middle",
                     // border-collapse drops a border set on the <tr>, so the
                     // live rule lives on the row's first cell.
                     live && "border-l-2 border-primary",
                   )}
                 >
-                  {/* The whole row opens the match centre. */}
                   <Link
-                    to={linkFor ? linkFor(m) : routes.liveViewer(m.id)}
+                    to={href}
                     aria-label={`${t("Match")} ${no ?? ""} ${m.home?.name ?? t("To be decided")} ${t("vs")} ${m.away?.name ?? t("To be decided")}`}
                     className="absolute inset-0 z-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   />

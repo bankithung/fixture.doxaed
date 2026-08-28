@@ -117,7 +117,7 @@ export function PublicTeamPage(): React.ReactElement {
                     {team.institution.name}
                   </Link>
                 ) : null}
-                <LeafLabel label={team.leaf_key} />
+                <LeafLabel label={team.leaf_label || team.leaf_key} />
               </div>
             </div>
             {team.form.length > 0 ? (

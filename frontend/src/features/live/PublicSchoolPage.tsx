@@ -1,10 +1,14 @@
-import { Link, useParams } from "react-router-dom";
+import { useMemo } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Award, School, Trophy } from "lucide-react";
+import { ArrowLeft, Award } from "lucide-react";
 import {
   publicRecordsApi,
   type PublicSchoolRecord,
+  type SchoolTeamRow,
+  type SchoolTotals,
 } from "@/api/publicRecords";
+import { Select } from "@/components/ui/Select";
 import { TeamCrest } from "@/components/ui/TeamCrest";
 import { LeafLabel } from "@/features/fixtures/LeafLabel";
 import { routes } from "@/lib/routes";
@@ -15,6 +19,23 @@ const FORM_CLS: Record<string, string> = {
   W: "bg-primary text-primary-foreground",
   D: "bg-muted text-muted-foreground",
   L: "bg-destructive/15 text-destructive",
+};
+
+/** The URL value that means "every tournament at once". */
+const ALL = "all";
+
+/** One tournament's worth of this school: the numbers and the teams. The
+ * current tournament and every past one are read through the SAME shape, so
+ * the page has one layout for any of them (owner 2026-08-28: "only one
+ * combined section"). */
+type Entry = {
+  id: string;
+  name: string;
+  slug: string;
+  season: string;
+  starts_at: string | null;
+  totals: SchoolTotals;
+  teams: SchoolTeamRow[];
 };
 
 function Stat({
@@ -34,58 +55,150 @@ function Stat({
   );
 }
 
-function TeamCard({
+function TeamRow({
   team,
-  slug,
-  id,
+  entry,
 }: {
-  team: PublicSchoolRecord["teams"][number];
-  slug: string;
-  id: string;
+  team: SchoolTeamRow;
+  entry: Entry;
 }): React.ReactElement {
+  const form = team.form ?? [];
   return (
-    <Link
-      to={routes.publicTeam(slug, id, team.team_id)}
-      data-testid={`school-team-${team.team_id}`}
-      className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-colors hover:border-primary/40"
-    >
-      <TeamCrest src={team.crest} name={team.team_name} size="md" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{team.team_name}</p>
-        <LeafLabel label={team.leaf_key} className="mt-0.5" />
-      </div>
-      <div className="flex items-center gap-1" aria-label={t("Recent form")}>
-        {team.form.map((r, i) => (
-          <span
-            key={i}
-            className={cn(
-              "grid h-5 w-5 place-items-center rounded-md text-[0.6875rem] font-semibold",
-              FORM_CLS[r] ?? "bg-muted",
-            )}
-          >
-            {r}
-          </span>
-        ))}
-      </div>
-      <span className="font-tabular text-sm text-muted-foreground">
-        {team.wins}-{team.draws}-{team.losses}
-      </span>
-    </Link>
+    <li>
+      <Link
+        to={routes.publicTeam(entry.slug, entry.id, team.team_id)}
+        data-testid={`school-team-${team.team_id}`}
+        className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent"
+      >
+        <TeamCrest src={team.crest} name={team.team_name} size="md" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{team.team_name}</p>
+          {/* The competition as people SAY it, never the raw key: the page
+              was printing `table_tennis.u_14.boys.singles` under every team
+              (owner 2026-08-28). */}
+          <LeafLabel label={team.leaf_label || team.leaf_key} className="mt-0.5" />
+        </div>
+        {form.length > 0 ? (
+          <div className="flex items-center gap-1" aria-label={t("Recent form")}>
+            {form.map((r, i) => (
+              <span
+                key={i}
+                className={cn(
+                  "grid h-5 w-5 place-items-center rounded-md text-[0.6875rem] font-semibold",
+                  FORM_CLS[r] ?? "bg-muted",
+                )}
+              >
+                {r}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <span className="font-tabular text-sm text-muted-foreground">
+          {team.wins}-{team.draws}-{team.losses}
+        </span>
+      </Link>
+    </li>
   );
+}
+
+function sumTotals(entries: Entry[]): SchoolTotals {
+  const out: SchoolTotals = {
+    played: 0,
+    wins: 0,
+    draws: 0,
+    losses: 0,
+    scored: 0,
+    conceded: 0,
+    difference: 0,
+  };
+  for (const e of entries) {
+    out.played += e.totals.played;
+    out.wins += e.totals.wins;
+    out.draws += e.totals.draws;
+    out.losses += e.totals.losses;
+    out.scored += e.totals.scored;
+    out.conceded += e.totals.conceded;
+  }
+  out.difference = out.scored - out.conceded;
+  return out;
+}
+
+/** The current tournament first, then the rest newest first. */
+function schoolEntries(school: PublicSchoolRecord): Entry[] {
+  const past = school.history
+    .flatMap((s) => s.tournaments)
+    .filter((row) => row.tournament_id !== school.tournament_id);
+  const fromHistory = school.history
+    .flatMap((s) => s.tournaments)
+    .find((row) => row.tournament_id === school.tournament_id);
+  const current: Entry = {
+    id: school.tournament_id,
+    name:
+      school.tournament_name ??
+      fromHistory?.tournament_name ??
+      t("This tournament"),
+    slug: school.tournament_slug ?? fromHistory?.tournament_slug ?? "",
+    season: school.season ?? fromHistory?.season ?? "",
+    starts_at: fromHistory?.starts_at ?? null,
+    // The top-level rollup is the richer read (full team records); history
+    // carries the same tournament again only to name and date it.
+    totals: school.totals,
+    teams: school.teams,
+  };
+  const when = (e: Entry): number =>
+    e.starts_at ? Date.parse(e.starts_at) : Number.NEGATIVE_INFINITY;
+  const rest: Entry[] = past
+    .map((row) => ({
+      id: row.tournament_id,
+      name: row.tournament_name,
+      slug: row.tournament_slug,
+      season: row.season,
+      starts_at: row.starts_at,
+      totals: row.totals,
+      teams: row.teams,
+    }))
+    .sort((a, b) => when(b) - when(a));
+  return [current, ...rest];
 }
 
 /**
  * Public school profile (P6, the owner's "schools can see their data any
- * time"): this tournament's rollup + every team + the cross-year history.
- * The page a headmaster forwards to the school WhatsApp group.
+ * time"): the page a headmaster forwards to the school WhatsApp group.
+ *
+ * Redrawn 2026-08-28 (owner: "show only the current one, only one combined
+ * section, a filter to view all other tournaments, and the logo is not
+ * visible"). The first cut stacked four sections — totals, teams,
+ * achievements, a season-grouped history — and the totals silently mixed in
+ * a test tournament and two empty ones, so "16 played, 6 won" was not the
+ * number of the tournament on the banner. Now:
+ *
+ * - **One tournament at a time, the current one by default.** The numbers and
+ *   the teams are read for ONE tournament, named in the filter, so nothing on
+ *   the page is a sum of things a parent did not ask about.
+ * - **One section.** Totals across the top of the card, the teams under
+ *   them, the school's achievements along the bottom — one card, read top to
+ *   bottom.
+ * - **The filter is the history.** Every other public tournament the school
+ *   entered is an option, and "All tournaments" sums them with each
+ *   tournament's teams under its own name — which is what the History list
+ *   was for, without a second section to hold it. The choice rides the URL
+ *   (`?t=`), so a forwarded link opens on the same year.
+ * - **The school's badge is the page's identity**, exactly as the team page
+ *   already does; the generic shield icon was standing in for a logo the
+ *   API had been sending all along.
  */
 export function PublicSchoolPage(): React.ReactElement {
   const { slug = "", id = "", instId = "" } = useParams();
+  const [params, setParams] = useSearchParams();
   const q = useQuery({
     queryKey: ["public-school", instId],
     queryFn: () => publicRecordsApi.school(slug, id, instId),
     staleTime: 30_000,
   });
+  const entries = useMemo(
+    () => (q.data ? schoolEntries(q.data) : []),
+    [q.data],
+  );
 
   if (q.isLoading) {
     return (
@@ -111,7 +224,40 @@ export function PublicSchoolPage(): React.ReactElement {
     );
   }
   const school = q.data;
-  const totals = school.totals;
+  const current = entries[0]!;
+
+  // An unknown `?t=` (a tournament this school never entered, a typo) falls
+  // back to the current tournament rather than to an empty page.
+  const wanted = params.get("t") ?? "";
+  const selected =
+    wanted === ALL
+      ? ALL
+      : entries.some((e) => e.id === wanted)
+        ? wanted
+        : current.id;
+  const shown =
+    selected === ALL ? entries : entries.filter((e) => e.id === selected);
+  const totals = selected === ALL ? sumTotals(shown) : shown[0]!.totals;
+  const teamCount = shown.reduce((n, e) => n + e.teams.length, 0);
+  // Badges are awarded within the current tournament (the API scopes them to
+  // this institution row), so they belong to its view and to the sum of all.
+  const showBadges =
+    school.badges.length > 0 && (selected === ALL || selected === current.id);
+
+  const options = [
+    ...entries.map((e) => ({
+      value: e.id,
+      label: e.season && !e.name.includes(e.season) ? `${e.name} · ${e.season}` : e.name,
+    })),
+    ...(entries.length > 1 ? [{ value: ALL, label: t("All tournaments") }] : []),
+  ];
+
+  const pick = (value: string): void => {
+    const next = new URLSearchParams(params);
+    if (value === current.id) next.delete("t");
+    else next.set("t", value);
+    setParams(next, { replace: true });
+  };
 
   return (
     <div className="min-h-screen text-foreground">
@@ -124,112 +270,120 @@ export function PublicSchoolPage(): React.ReactElement {
           {t("Back to the schedule")}
         </Link>
 
-        <header className="flex items-center gap-3">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary/10">
-            <School aria-hidden="true" className="h-6 w-6 text-primary" />
-          </span>
-          <div className="min-w-0">
+        <header className="flex flex-wrap items-center gap-3">
+          {/* The school's OWN badge, whole; initials when it never uploaded
+              one. Not a generic icon (owner 2026-08-28: "the logo is not
+              visible"). */}
+          <TeamCrest
+            src={school.crest}
+            name={school.institution_name}
+            size="xl"
+          />
+          <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg font-semibold">
               {school.institution_name}
             </h1>
             <p className="text-xs text-muted-foreground">
-              {school.teams.length}{" "}
-              {school.teams.length === 1 ? t("team") : t("teams")}{" "}
-              {t("in this tournament")}
+              {teamCount} {teamCount === 1 ? t("team") : t("teams")}{" "}
+              {selected === ALL
+                ? t("across all tournaments")
+                : `${t("in")} ${shown[0]!.name}`}
             </p>
           </div>
+          {/* One tournament at a time; the whole history is a choice away. */}
+          {entries.length > 1 ? (
+            <div
+              data-testid="school-tournament-filter"
+              className="w-full sm:w-auto sm:min-w-[16rem]"
+            >
+              <Select
+                size="sm"
+                aria-label={t("Tournament")}
+                value={selected}
+                onChange={pick}
+                options={options}
+              />
+            </div>
+          ) : null}
         </header>
 
-        {/* Tournament totals */}
+        {/* ONE section: the numbers, the teams under them, the achievements
+            along the bottom. */}
         <section
-          data-testid="school-totals"
-          className="grid grid-cols-4 divide-x divide-border rounded-xl border border-border bg-card shadow-sm sm:grid-cols-7"
+          data-testid="school-record"
+          className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
         >
-          <Stat label={t("Played")} value={totals.played} />
-          <Stat label={t("Won")} value={totals.wins} />
-          <Stat label={t("Drawn")} value={totals.draws} />
-          <Stat label={t("Lost")} value={totals.losses} />
-          <div className="hidden sm:contents">
-            <Stat label={t("Scored")} value={totals.scored} />
-            <Stat label={t("Against")} value={totals.conceded} />
-            <Stat label={t("Diff")} value={totals.difference} />
+          <div
+            data-testid="school-totals"
+            className="grid grid-cols-4 divide-x divide-border border-b border-border sm:grid-cols-7"
+          >
+            <Stat label={t("Played")} value={totals.played} />
+            <Stat label={t("Won")} value={totals.wins} />
+            <Stat label={t("Drawn")} value={totals.draws} />
+            <Stat label={t("Lost")} value={totals.losses} />
+            <div className="hidden sm:contents">
+              <Stat label={t("Scored")} value={totals.scored} />
+              <Stat label={t("Against")} value={totals.conceded} />
+              <Stat label={t("Diff")} value={totals.difference} />
+            </div>
           </div>
-        </section>
 
-        {/* Teams */}
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold">{t("Teams")}</h2>
-          {school.teams.length === 0 ? (
-            <p className="rounded-xl border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+          {teamCount === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">
               {t("No teams registered yet.")}
             </p>
           ) : (
-            school.teams.map((team) => (
-              <TeamCard key={team.team_id} team={team} slug={slug} id={id} />
+            shown.map((entry) => (
+              <div key={entry.id} data-testid={`school-entry-${entry.id}`}>
+                {/* Only the sum of everything needs each tournament named
+                    inside the card; a single tournament is named above it. */}
+                {selected === ALL ? (
+                  <Link
+                    to={routes.publicSchedule(entry.slug, entry.id)}
+                    className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <span className="min-w-0 truncate">{entry.name}</span>
+                    <span className="font-tabular shrink-0 normal-case tracking-normal">
+                      {entry.totals.played} {t("played")}, {entry.totals.wins}{" "}
+                      {t("won")}
+                    </span>
+                  </Link>
+                ) : null}
+                {entry.teams.length === 0 ? (
+                  <p className="px-4 py-4 text-center text-sm text-muted-foreground">
+                    {t("No teams in this tournament.")}
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {entry.teams.map((team) => (
+                      <TeamRow key={team.team_id} team={team} entry={entry} />
+                    ))}
+                  </ul>
+                )}
+              </div>
             ))
           )}
-        </section>
 
-        {/* Badges */}
-        {school.badges.length > 0 ? (
-          <section className="flex flex-col gap-2">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-              <Award aria-hidden="true" className="h-4 w-4 text-primary" />
-              {t("Achievements")}
-            </h2>
-            <ul className="flex flex-wrap gap-1.5">
+          {showBadges ? (
+            <div
+              data-testid="school-badges"
+              className="flex flex-wrap items-center gap-1.5 border-t border-border px-4 py-3"
+            >
+              <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-semibold">
+                <Award aria-hidden="true" className="h-4 w-4 text-primary" />
+                {t("Achievements")}
+              </span>
               {school.badges.map((b) => (
-                <li
+                <span
                   key={b.id}
                   className="rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary"
                 >
                   {b.name}
-                </li>
+                </span>
               ))}
-            </ul>
-          </section>
-        ) : null}
-
-        {/* Cross-year history */}
-        {school.history.length > 0 ? (
-          <section className="flex flex-col gap-2" data-testid="school-history">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-              <Trophy aria-hidden="true" className="h-4 w-4 text-primary" />
-              {t("History")}
-            </h2>
-            {school.history.map((season) => (
-              <div
-                key={season.season}
-                className="rounded-xl border border-border bg-card shadow-sm"
-              >
-                <p className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  {season.season === "undated" ? t("Season unknown") : season.season}
-                </p>
-                <ul className="divide-y divide-border">
-                  {season.tournaments.map((row) => (
-                    <li key={row.tournament_id}>
-                      <Link
-                        to={routes.publicSchedule(
-                          row.tournament_slug,
-                          row.tournament_id,
-                        )}
-                        className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-accent"
-                      >
-                        <span className="min-w-0 truncate text-sm font-medium">
-                          {row.tournament_name}
-                        </span>
-                        <span className="font-tabular shrink-0 text-xs text-muted-foreground">
-                          {row.totals.played} {t("played")}, {row.totals.wins}{" "}
-                          {t("won")}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </section>
-        ) : null}
+            </div>
+          ) : null}
+        </section>
       </div>
     </div>
   );

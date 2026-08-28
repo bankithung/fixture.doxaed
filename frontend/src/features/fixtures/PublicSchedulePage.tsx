@@ -16,9 +16,7 @@ import { type PublicScheduleMatch } from "@/api/tournaments";
 import { Button } from "@/components/ui/button";
 import { ActionMenu, ActionMenuItem } from "@/components/ui/menu";
 import { Dialog } from "@/components/ui/dialog";
-import { WatchLiveLink } from "@/features/live/WatchLiveLink";
 import { routes } from "@/lib/routes";
-import { liveSetView } from "@/lib/setDisplay";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { useBreakpoint } from "@/lib/useBreakpoint";
@@ -43,14 +41,11 @@ import { LabelChips } from "./publicTournamentViews";
 import {
   LivePulse,
   MatchCard,
-  TeamName,
   fmtDay,
   fmtDayShort,
-  fmtKickoff,
-  statusMeta,
   teamHit,
 } from "./publicMatchCard";
-import { CompetitionSpotlight } from "./CompetitionSpotlight";
+import { CompetitionSpotlight, MatchSpotlight } from "./CompetitionSpotlight";
 import { CourtBoard, courtDefaultFits } from "./CourtBoard";
 import { MatchSheet } from "./MatchSheet";
 import { MatchDrawer } from "./MatchDrawer";
@@ -123,10 +118,6 @@ function LiveBand({
   timeZone: string;
 }): React.ReactElement | null {
   if (matches.length === 0) return null;
-  const single = matches.length === 1;
-  // Five courts can all be live at once, and five hero tiles push the sheet a
-  // screen and a half down. Past two, the band tiles tighter.
-  const many = matches.length > 2;
   return (
     <section
       data-testid="live-band"
@@ -141,139 +132,29 @@ function LiveBand({
       </div>
       {/* ONE tile per row (owner 2026-08-27). Side by side, two long school
           names, a set strip and a scoreline had no room left and ran into
-          each other; a live match is read across, not down. */}
+          each other; a live match is read across, not down.
+
+          Each tile IS the competition page's spotlight (owner 2026-08-28:
+          "in the today's page all the ongoing matches don't have the full
+          screen button, we need that too"), so every court's match can go on
+          its own projector from here, and Today can never drift from what a
+          competition page shows for the same match. The band names the state
+          once above the list; each tile's heading names its competition,
+          which Today, unlike a competition page, cannot take as read. */}
       <div className="grid gap-3">
-        {matches.map((m) => {
-          const sv = liveSetView(m);
-          const sm = statusMeta(m.status);
-          const score: [number, number] = sv
-            ? sv.points
-            : [m.home_score ?? 0, m.away_score ?? 0];
-          const hasPens = m.home_pens != null && m.away_pens != null;
-          return (
-            <div
-              key={m.id}
-              data-testid={`live-tile-${m.id}`}
-              className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm"
-            >
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
-              />
-              <div
-                className={cn(
-                  "relative flex flex-col items-center gap-3 px-4 sm:px-6",
-                  many ? "py-4" : "py-6",
-                )}
-              >
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
-                    sm.cls,
-                  )}
-                >
-                  <LivePulse />
-                  {t(sm.label)}
-                  {/* Football periods never describe a set sport; its pill
-                      relies on the Set N line under the score. */}
-                  {!sv && m.current_period ? (
-                    <span className="capitalize text-muted-foreground">
-                      · {t(m.current_period.replace(/_/g, " "))}
-                    </span>
-                  ) : null}
-                </span>
-
-                {/* One column on a phone (a 4xl score between two shrinking
-                    name cells collided at 390px), three from `sm` up. */}
-                <div className="grid w-full max-w-xl grid-cols-1 items-center gap-2 sm:grid-cols-[1fr_auto_1fr] sm:gap-6">
-                  <div className="min-w-0 text-center sm:text-right">
-                    {/* The hero of the whole page: a full-size badge either
-                        side of the score, centred on a phone and hugging the
-                        score from `sm` up. */}
-                    <TeamName
-                      side={m.home}
-                      crestSize="lg"
-                      wrap
-                      className="mx-auto text-sm font-medium sm:mx-0 sm:ml-auto sm:text-base"
-                    />
-                    <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                      {t("Home")}
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <Link
-                      to={routes.liveViewer(m.id)}
-                      aria-label={t("Open the match centre")}
-                      className={cn(
-                        "block rounded-md px-1 font-tabular font-semibold tabular-nums transition-colors hover:text-primary",
-                        single
-                          ? "text-4xl sm:text-6xl"
-                          : many
-                            ? "text-3xl sm:text-4xl"
-                            : "text-4xl sm:text-5xl",
-                      )}
-                    >
-                      {score[0]}
-                      <span className="px-2 text-muted-foreground">-</span>
-                      {score[1]}
-                    </Link>
-                    {sv ? (
-                      <p className="mt-1 font-tabular text-sm text-muted-foreground">
-                        {t("Set")} {sv.setNo} · {t("Sets")} {sv.sets[0]}-
-                        {sv.sets[1]}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="min-w-0 text-center sm:text-left">
-                    <TeamName
-                      side={m.away}
-                      crestSize="lg"
-                      wrap
-                      className="mx-auto text-sm font-medium sm:mx-0 sm:mr-auto sm:text-base"
-                    />
-                    <div className="text-[0.6875rem] uppercase tracking-[0.12em] text-muted-foreground">
-                      {t("Away")}
-                    </div>
-                  </div>
-                </div>
-
-                {sv && sv.finished.length > 0 ? (
-                  <div className="flex flex-wrap justify-center gap-1.5">
-                    {sv.finished.map((s, i) => (
-                      <span
-                        key={i}
-                        className="rounded-md bg-muted px-2 py-0.5 font-tabular text-xs text-muted-foreground"
-                      >
-                        {s[0]}-{s[1]}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-
-                {hasPens ? (
-                  <p className="font-tabular text-xs text-muted-foreground">
-                    {t("Pens")} {m.home_pens}-{m.away_pens}
-                  </p>
-                ) : null}
-
-                {/* The score keeps ticking behind it — this opens a new tab. */}
-                <WatchLiveLink
-                  url={m.watch_url}
-                  testid={`watch-live-tile-${m.id}`}
-                  label={t("Watch this match live on YouTube")}
-                />
-
-                <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                  <LabelChips label={m.leaf_label} />
-                  <span className="font-tabular">
-                    {fmtKickoff(m.scheduled_at, timeZone)}
-                  </span>
-                  {m.venue ? <span>· {m.venue}</span> : null}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {matches.map((m) => (
+          <MatchSpotlight
+            key={m.id}
+            match={m}
+            kind="live"
+            matches={matches}
+            timeZone={timeZone}
+            title={m.leaf_label}
+            label={<LabelChips label={m.leaf_label} />}
+            testid={`live-tile-${m.id}`}
+            frame="tile"
+          />
+        ))}
       </div>
     </section>
   );

@@ -122,7 +122,7 @@ class PublicTeamRecordView(GenericAPIView):
             Team.objects.filter(
                 id=team_id, tournament=t, deleted_at__isnull=True
             )
-            .select_related("institution")
+            .select_related("institution", "tournament")
             .first()
         )
         if team is None:

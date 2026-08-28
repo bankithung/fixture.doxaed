@@ -844,4 +844,43 @@ describe("PublicSchedulePage", () => {
     const team = within(m1).getByRole("link", { name: "Alpha FC" });
     expect(team.getAttribute("href")).toContain("/team/");
   });
+
+  it("anchors the row link to its CELL, never to the <tr> (Safari)", async () => {
+    // Safari ignores `position: relative` on a table row, so an
+    // `absolute inset-0` link inside a `relative` <tr> grew to the nearest
+    // positioned ancestor and lay invisibly over the viewer tabs: on every
+    // iPhone a tap on "Standings" opened a match drawer instead (owner
+    // 2026-08-28). The link lives in a `relative` cell now, and the rest of
+    // the row opens the same match through a click handler.
+    mount();
+    const m1 = await screen.findByTestId("court-Main Ground-row-m1");
+    expect(m1.className).not.toMatch(/\brelative\b/);
+    const link = within(m1).getByRole("link", { name: /vs/i });
+    const cell = link.closest("td")!;
+    expect(cell.className).toMatch(/\brelative\b/);
+
+    // A plain click on any other cell still opens the match over the sheet.
+    await userEvent.click(within(m1).getByText("Full time"));
+    expect(await screen.findByTestId("drawer-close")).toBeInTheDocument();
+  });
+
+  it("gives every Now-playing tile its own full-screen button", async () => {
+    // Today's band is ONE spotlight per live court (owner 2026-08-28: "in the
+    // today's page all the ongoing matches don't have the full screen button,
+    // we need that too"); each goes to the projector on its own.
+    mount();
+    const band = await screen.findByTestId("live-band");
+    const tiles = [
+      within(band).getByTestId("live-tile-m2"),
+      within(band).getByTestId("live-tile-m5"),
+    ];
+    for (const tile of tiles) {
+      expect(within(tile).getByTestId("spotlight-fullscreen")).toHaveTextContent(
+        "Full screen",
+      );
+    }
+    // Today mixes competitions, so each tile names its own.
+    expect(tiles[0]).toHaveTextContent("Football");
+    expect(tiles[1]).toHaveTextContent("Table Tennis");
+  });
 });
