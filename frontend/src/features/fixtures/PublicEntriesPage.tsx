@@ -418,8 +418,16 @@ export function PublicEntriesPage(): React.ReactElement {
               ) : (
                 /* A matrix stays a matrix on a phone: it scrolls sideways with
                    the school column pinned, because collapsing it to cards
-                   would destroy the one thing a grid is for. */
-                <div className="min-w-0 -mx-3 overflow-x-auto sm:mx-0">
+                   would destroy the one thing a grid is for.
+
+                   `relative` is load-bearing: the cells carry `sr-only`
+                   spans, which are `position: absolute`, and an absolutely
+                   positioned box is clipped by the scroller only when the
+                   scroller is its containing block. Without it every span
+                   escaped to the page, the document grew to the sheet's
+                   38rem, the whole phone page scrolled sideways and the
+                   fixed Filter pill drifted with the layout viewport. */
+                <div className="relative min-w-0 -mx-3 overflow-x-auto sm:mx-0">
                   <table
                     data-testid="entries-matrix"
                     className="w-full min-w-[38rem] sm:min-w-[46rem] border-separate border-spacing-0 text-[clamp(0.7rem,0.62rem+0.28vw,0.95rem)]"

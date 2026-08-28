@@ -49,7 +49,11 @@ export function TallyGrid({
     "min-w-[9rem] max-w-[11rem] sm:w-64 sm:min-w-64 sm:max-w-64 lg:w-80 lg:min-w-80 lg:max-w-80";
 
   return (
-    <div className="min-w-0 -mx-3 overflow-x-auto sm:mx-0">
+    /* `relative` keeps the cells' `sr-only` (absolute) spans clipped inside
+       this scroller; without it they escape to the page, the document grows
+       to the sheet's 40rem and the whole phone page scrolls sideways (same
+       fix as the Schools sheet). */
+    <div className="relative min-w-0 -mx-3 overflow-x-auto sm:mx-0">
       <table
         data-testid="tally-grid"
         className="w-full min-w-[40rem] sm:min-w-[52rem] border-separate border-spacing-0 text-[clamp(0.7rem,0.62rem+0.28vw,0.95rem)]"
