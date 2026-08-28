@@ -561,11 +561,6 @@ function PublicScheduleInner(): React.ReactElement {
    * question a parent asks, it should not need a toggle); `names=0` is the
    * explicit opt-out and its only value. */
   const namesOn = params.get("names") !== "0";
-  const { rosters, settled: rostersSettled } = usePublicRosters(
-    slug,
-    id,
-    wantRosters || namesOn,
-  );
 
   /** Scope, view and day live in the URL: what a viewer is looking at is what
    * they share, and coming back to a bookmark lands on the same board. */
@@ -681,6 +676,17 @@ function PublicScheduleInner(): React.ReactElement {
   const defaultView = courtDefaultFits(dayMatches) ? "courts" : "time";
   const viewParam = params.get("view") ?? "";
   const view = views.some((v) => v.key === viewParam) ? viewParam : defaultView;
+
+  /** The court board names players too (each court's sheet has its own
+   * switch, on by default — owner 2026-08-28), so showing it is the third
+   * reason to read the rosters. `names=0` still keeps the knockout draw's read
+   * away when the page opens on the bracket. */
+  const courtsShown = selected !== "knockout" && !selectedComp && view === "courts";
+  const { rosters, settled: rostersSettled } = usePublicRosters(
+    slug,
+    id,
+    wantRosters || namesOn || courtsShown,
+  );
 
   /** Everything below the control bar obeys the selection (owner 2026-08-13).
    * Open a category and the bands are that category's — a "Now playing" tile
@@ -1186,6 +1192,10 @@ function PublicScheduleInner(): React.ReactElement {
                           courts={query.data.courts}
                           numbers={numbers}
                           linkFor={matchHref}
+                          // Handed over once the read has settled: an empty
+                          // index mid-flight would read "No team sheet" under
+                          // every name for a beat.
+                          rosters={rostersSettled ? rosters : undefined}
                         />
                       ) : (
                         <TimeBoard

@@ -213,6 +213,35 @@ beforeEach(() => {
 });
 
 describe("PublicSchedulePage", () => {
+  it("names every court's players by DEFAULT, each court on its own switch", async () => {
+    mount();
+    const day = await screen.findByTestId("public-day-2026-06-20");
+    const ground = within(day).getByTestId("court-lane-Main Ground");
+    const hall = within(day).getByTestId("court-lane-Table Hall");
+
+    // The court board is a reason to read the rosters on its own, and once
+    // they land every court's sheet has grown its team sheets in (owner
+    // 2026-08-28) — "who is playing" should not need a click.
+    const toggle = await within(ground).findByTestId(
+      "court-names-toggle-Main Ground",
+    );
+    expect(tournamentsApi.publicRosters).toHaveBeenCalledWith("nagaland-cup", "t1");
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(ground).toHaveTextContent("Asen Jamir");
+    expect(ground).toHaveTextContent("Chubala Imchen");
+
+    // Off folds THIS court's sheets away and leaves the next court alone.
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(ground).not.toHaveTextContent("Asen Jamir");
+    expect(
+      within(hall).getByTestId("court-names-toggle-Table Hall"),
+    ).toHaveAttribute("aria-checked", "true");
+
+    await userEvent.click(toggle);
+    expect(ground).toHaveTextContent("Asen Jamir");
+  });
+
   it("defaults to ONE SHEET PER COURT, with a column for every fact, ZERO dashes", async () => {
     const { container } = mount();
     // smart default day = nearest >= today, else first day → 2026-06-20

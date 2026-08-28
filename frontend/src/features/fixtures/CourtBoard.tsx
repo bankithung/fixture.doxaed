@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   type PublicCourtLink,
   type PublicScheduleMatch,
@@ -6,9 +6,14 @@ import {
 import { WatchLiveLink } from "@/features/live/WatchLiveLink";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
-import { FINAL_STATUSES, LIVE_STATUSES } from "./publicTournament";
+import {
+  FINAL_STATUSES,
+  LIVE_STATUSES,
+  type RosterIndex,
+} from "./publicTournament";
 import { LivePulse } from "./publicMatchCard";
 import { MatchSheet } from "./MatchSheet";
+import { NamesToggle } from "./PublicBracketBoard";
 
 /**
  * The order of play for ONE day, ONE SHEET PER COURT — the default and main
@@ -99,13 +104,20 @@ function Lane({
   timeZone,
   numbers,
   linkFor,
+  rosters,
 }: {
   lane: CourtLane;
   timeZone: string;
   numbers: Map<string, number>;
   linkFor?: (m: PublicScheduleMatch) => string;
+  rosters?: RosterIndex;
 }): React.ReactElement {
   const left = lane.matches.length - lane.played;
+  /** Each court's sheet has its OWN Player names switch, ON by default (owner
+   * 2026-08-28): the sheet pinned at a table is read by the people standing
+   * at it, and "who is playing" is their first question. Off folds the team
+   * sheets of this one court away and leaves the other courts alone. */
+  const [namesOn, setNamesOn] = useState(true);
   // "Next up" is the first match on this court that has not been played and is
   // not already on — the one question a court's own sheet exists to answer.
   const nextId = lane.matches.find(
@@ -126,6 +138,13 @@ function Lane({
           {lane.matches.length} {lane.matches.length === 1 ? t("match") : t("matches")}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-3">
+          {rosters ? (
+            <NamesToggle
+              on={namesOn}
+              onChange={setNamesOn}
+              testid={`court-names-toggle-${lane.name}`}
+            />
+          ) : null}
           <WatchLiveLink
             url={lane.link?.is_streaming ? lane.link.watch_url : null}
             className="h-6 px-1.5 text-[0.6875rem] text-primary hover:bg-primary/10"
@@ -146,6 +165,7 @@ function Lane({
         idScope={`court-${lane.name}`}
         nextId={nextId}
         linkFor={linkFor}
+        rosters={namesOn ? rosters : undefined}
       />
     </section>
   );
@@ -159,6 +179,7 @@ export function CourtBoard({
   courts,
   numbers,
   linkFor,
+  rosters,
 }: {
   day: string;
   matches: PublicScheduleMatch[];
@@ -166,6 +187,10 @@ export function CourtBoard({
   courts: PublicCourtLink[] | undefined;
   numbers: Map<string, number>;
   linkFor?: (m: PublicScheduleMatch) => string;
+  /** Present = every court's sheet can name its players; each lane carries
+   * its own switch for that, on by default. Absent = plain team sheets, no
+   * switch (the print document, the overlay). */
+  rosters?: RosterIndex;
 }): React.ReactElement {
   const lanes = useMemo(
     () => buildCourtLanes(matches, courts),
@@ -193,6 +218,7 @@ export function CourtBoard({
           timeZone={timeZone}
           numbers={numbers}
           linkFor={linkFor}
+          rosters={rosters}
         />
       ))}
     </div>
