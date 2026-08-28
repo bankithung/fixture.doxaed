@@ -355,7 +355,7 @@ export function PublicEntriesPage(): React.ReactElement {
             <>
               <div
                 data-testid="entries-summary"
-                className="grid grid-cols-3 gap-3 border-y border-border py-3 sm:flex sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-3"
+                className="grid grid-cols-3 gap-3 border-b border-border pb-3 sm:flex sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-3"
               >
                 <div className="flex flex-col">
                   <span className="font-tabular text-xl font-semibold sm:text-2xl">

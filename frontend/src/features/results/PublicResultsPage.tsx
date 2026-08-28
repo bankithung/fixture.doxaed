@@ -380,7 +380,7 @@ export function PublicResultsPage(): React.ReactElement {
           <>
             <div
               data-testid="results-summary"
-              className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-y border-border py-2 sm:gap-x-8 sm:gap-y-3 sm:py-3"
+              className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-border pb-2 sm:gap-x-8 sm:gap-y-3 sm:pb-3"
             >
               <Stat value={q.data.totals.medals} label={t("Medals awarded")} />
               <Stat value={q.data.totals.points} label={t("Points awarded")} />
