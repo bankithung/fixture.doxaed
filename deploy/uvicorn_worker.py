@@ -44,15 +44,28 @@ class BoundedUvicornWorker(UvicornWorker):
     """UvicornWorker with a hard ceiling on simultaneous requests.
 
     ``WEB_MAX_CONCURRENCY`` is per worker, so the fleet total is that times
-    ``WEB_CONCURRENCY``. Default 25 x 2 workers = 50 in-flight, against a
-    Postgres ``max_connections`` of 100 — headroom for the SSE streams (which
-    hand their connection back before streaming, see apps/live/sse.py), the
-    admin, and the superuser reserve.
+    ``WEB_CONCURRENCY``. NOTE: uvicorn counts *connections*, so every open SSE
+    stream (apps/live/sse.py) occupies a slot for its whole life even though
+    it hands its Postgres connection back before streaming. At 25/worker a
+    live event with a few dozen public viewers filled every slot with streams
+    and every control-room request got an instant 503 (2026-08-28). Size this
+    for streams + requests; Postgres ``max_connections`` only needs to cover
+    the request share.
     """
 
     CONFIG_KWARGS = {
         **UvicornWorker.CONFIG_KWARGS,
-        "limit_concurrency": _int_env("WEB_MAX_CONCURRENCY", 25),
+        "limit_concurrency": _int_env("WEB_MAX_CONCURRENCY", 100),
         # Bound how long a kept-alive idle connection ties up a slot.
         "timeout_keep_alive": _int_env("WEB_KEEPALIVE", 5),
+        # 2026-08-28 incident (live Dimapur event): a worker that is shutting
+        # down (max_requests recycle, HUP reload, restart) "waits for
+        # connections to close" — and SSE streams never close. Uvicorn's
+        # default is to wait FOREVER; meanwhile the worker accepts nothing and
+        # no longer heartbeats, so gunicorn only replaced it 180s later via
+        # WORKER TIMEOUT/SIGABRT. Both workers recycled within seconds of each
+        # other, so the whole site went deaf for ~3 minutes every ~7 minutes.
+        # Bounding the wait force-closes the streams after a few seconds;
+        # EventSource clients reconnect on their own.
+        "timeout_graceful_shutdown": _int_env("WEB_GRACEFUL_SHUTDOWN", 5),
     }

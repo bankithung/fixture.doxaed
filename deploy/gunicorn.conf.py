@@ -34,9 +34,14 @@ worker_class = "uvicorn_worker.BoundedUvicornWorker"
 # swap together. Two workers keep ~450MB free for the connection pool.
 workers = int(os.environ.get("WEB_CONCURRENCY") or max(2, multiprocessing.cpu_count()))
 
-# Recycle workers periodically to bound memory growth.
-max_requests = 1000
-max_requests_jitter = 100
+# Worker recycling is OFF. It was 1000 requests (memory-growth insurance from
+# the 1.9GB days); on a live event day that is every ~7 minutes, and each
+# recycle stalled the worker on its never-closing SSE streams for 180s (see
+# uvicorn_worker.py, 2026-08-28). The box now has 32GB and a worker sits at
+# ~350MB, so there is nothing to reclaim. If a leak ever shows up, set this
+# high (e.g. 50000) rather than back to 1000.
+max_requests = 0
+max_requests_jitter = 0
 
 # For an ASGI worker this is a HEARTBEAT deadline, not a request deadline: miss
 # it and the arbiter SIGKILLs the worker, taking every in-flight request with

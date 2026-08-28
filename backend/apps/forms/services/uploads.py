@@ -9,18 +9,46 @@ session) and the public form (no session) without a per-request auth dance.
 """
 from __future__ import annotations
 
+import time
 import uuid as _uuid
 
 from django.core import signing
+from django.core.signing import b62_encode
 
 _SALT = "forms.file-upload.v1"
 # Generous: these URLs are embedded in admin tables and form prefill, both of
 # which re-fetch on load. 30 days keeps a tab left open overnight working.
 MAX_AGE = 30 * 24 * 60 * 60
+# The signed timestamp is rounded DOWN to this bucket, so the same file gets
+# the SAME URL for a whole day (see _StableTimestampSigner).
+TOKEN_BUCKET_SECONDS = 24 * 60 * 60
+
+
+class _StableTimestampSigner(signing.TimestampSigner):
+    """TimestampSigner whose timestamp only changes once a day.
+
+    Plain ``TimestampSigner`` stamps the current SECOND into the token, so two
+    calls to :func:`upload_url` for the same file one second apart produce two
+    different URLs. Every live-board payload re-mints its crest URLs, so on a
+    match day each score tick handed the browser a *new* URL per team logo and
+    it re-downloaded every crest through Django on every tick (2026-08-28,
+    Dimapur: dozens of viewers x every tick x every logo — a request storm that
+    competed with the scorers for worker slots).
+
+    Bucketing the stamp keeps the URL identical across a day — the browser
+    cache hits — while :func:`verify_upload_token` and ``MAX_AGE`` are
+    untouched: an existing (per-second) token still verifies, and a bucketed
+    one is at most one bucket "older" than it really is, i.e. it expires up to
+    a day early, never late.
+    """
+
+    def timestamp(self):
+        now = int(time.time())
+        return b62_encode(now - now % TOKEN_BUCKET_SECONDS)
 
 
 def sign_upload(upload_ref) -> str:
-    return signing.TimestampSigner(salt=_SALT).sign(str(upload_ref))
+    return _StableTimestampSigner(salt=_SALT).sign(str(upload_ref))
 
 
 def verify_upload_token(token: str, max_age: int = MAX_AGE) -> str | None:

@@ -895,12 +895,18 @@ class ServeUploadView(GenericAPIView):
             )
         if not authorized:
             raise NotFound("file_not_found")
-        return FileResponse(
+        response = FileResponse(
             up.file.open("rb"),
             as_attachment=bool(request.query_params.get("dl")),
             filename=up.original_name,
             content_type=up.content_type or "application/octet-stream",
         )
+        # An upload_ref names ONE immutable file (a replaced logo gets a new
+        # ref), so the browser may keep it. Without this the live board
+        # re-downloaded every team crest on every score tick (2026-08-28).
+        # ``private``: the manager-session path above has no token in the URL.
+        response["Cache-Control"] = "private, max-age=604800, immutable"
+        return response
 
 
 def _organiser_emails(form) -> list[str]:
