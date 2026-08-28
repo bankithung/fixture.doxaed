@@ -49,6 +49,7 @@ from apps.lens.views import (
     LensPassRotateView,
     LensPhotoApproveView,
     LensPhotoAwardView,
+    LensPhotoDeleteView,
     LensPhotoHideView,
     LensPhotoListView,
     LensReopenView,
@@ -552,6 +553,11 @@ urlpatterns = [
         "<uuid:tournament_id>/lens/photos/",
         LensPhotoListView.as_view(),
         name="tournament-lens-photos",
+    ),
+    path(
+        "<uuid:tournament_id>/lens/photos/<uuid:photo_id>/",
+        LensPhotoDeleteView.as_view(),
+        name="tournament-lens-photo-delete",
     ),
     path(
         "<uuid:tournament_id>/lens/photos/<uuid:photo_id>/approve/",

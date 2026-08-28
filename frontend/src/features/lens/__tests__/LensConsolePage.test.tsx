@@ -32,6 +32,7 @@ vi.mock("@/api/lens", async (importOriginal) => {
       photos: vi.fn(),
       approve: vi.fn(),
       hide: vi.fn(),
+      remove: vi.fn(),
       award: vi.fn(),
     },
   };
@@ -162,6 +163,7 @@ beforeEach(() => {
   vi.mocked(lensApi.hide).mockResolvedValue({
     photo: photo({ id: "ph1", status: "hidden" }),
   });
+  vi.mocked(lensApi.remove).mockResolvedValue({ removed: true });
   vi.mocked(lensApi.award).mockResolvedValue({
     photo: photo({ id: "ph1", status: "approved", award_category: "Best Action Shot" }),
   });
@@ -249,6 +251,31 @@ describe("LensConsolePage", () => {
     expect(photoId).toBe("ph1");
     expect(body.reason).toBe("not an event photo");
     expect(await screen.findByText("Photo hidden")).toBeInTheDocument();
+  });
+
+  it("deletes a photo for good after a confirm", async () => {
+    vi.mocked(lensApi.photos).mockResolvedValue({
+      photos: [photo({ id: "ph1", status: "approved" })],
+    });
+    mount();
+
+    await userEvent.click(await screen.findByTestId("lens-tab-moderate"));
+    await userEvent.click(await screen.findByTestId("photo-ph1"));
+    await userEvent.click(await screen.findByTestId("delete-btn"));
+    expect(await screen.findByText("Delete this photo?")).toBeInTheDocument();
+    // Nothing leaves until the confirm.
+    expect(lensApi.remove).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByTestId("confirm-action-btn"));
+
+    await waitFor(() => expect(lensApi.remove).toHaveBeenCalledTimes(1));
+    const [tid, photoId, body] = vi.mocked(lensApi.remove).mock.calls[0];
+    expect(tid).toBe("t1");
+    expect(photoId).toBe("ph1");
+    expect(body.event_id).toBeTruthy();
+    expect(await screen.findByText("Photo deleted")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByTestId("lightbox")).not.toBeInTheDocument(),
+    );
   });
 
   it("mints ONE card for the event and prints it with the join link", async () => {

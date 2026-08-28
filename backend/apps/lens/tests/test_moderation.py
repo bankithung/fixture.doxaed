@@ -222,3 +222,82 @@ def test_hidden_photo_removed_status_on_public_pass_page():
     body = APIClient().get(f"/api/lens/p/{token}/").json()
     assert body["photos"][0]["status"] == "removed"
     assert "reason" not in body["photos"][0]
+
+
+# --- delete: the one-way door next to the reversible Hide --------------------
+
+
+def test_delete_removes_row_files_and_audits():
+    admin, t, _c, photos, client = _setup_with_photos(2)
+    p = photos[0]
+    img, thumb, _q_img, _q_thumb = _paths(p)
+    assert img.exists() and thumb.exists()
+
+    r = client.delete(
+        f"/api/tournaments/{t.id}/lens/photos/{p.id}/?event_id={uuid.uuid4()}"
+    )
+    assert r.status_code == 200, r.content
+    assert r.json() == {"removed": True}
+    assert not LensPhoto.objects.filter(pk=p.pk).exists()
+    # The other photo is untouched.
+    assert LensPhoto.objects.filter(pk=photos[1].pk).exists()
+    # Files are gone for good, not quarantined.
+    assert not img.exists() and not thumb.exists()
+    ev = AuditEvent.objects.get(event_type="lens_photo_deleted", target_id=p.id)
+    assert ev.actor_user_id == admin.id
+    assert ev.payload_before["original_name"] == p.original_name
+    assert ev.payload_before["institution_id"] == str(p.institution_id)
+    # Gone means gone: a second delete is a 404, not a silent 200.
+    r = client.delete(f"/api/tournaments/{t.id}/lens/photos/{p.id}/")
+    assert r.status_code == 404
+
+
+def test_delete_hidden_photo_clears_quarantine_too():
+    _admin, t, _c, photos, client = _setup_with_photos()
+    p = photos[0]
+    img, thumb, q_img, q_thumb = _paths(p)
+    client.post(
+        f"/api/tournaments/{t.id}/lens/photos/{p.id}/hide/",
+        {"event_id": str(uuid.uuid4())},
+        format="json",
+    )
+    assert q_img.exists() and q_thumb.exists()
+
+    r = client.delete(f"/api/tournaments/{t.id}/lens/photos/{p.id}/")
+    assert r.status_code == 200, r.content
+    assert not LensPhoto.objects.filter(pk=p.pk).exists()
+    assert not q_img.exists() and not q_thumb.exists()
+    assert not img.exists() and not thumb.exists()
+
+
+def test_delete_requires_tournament_management():
+    from apps.lens.tests.utils import verified
+
+    _admin, t, _c, photos, _client = _setup_with_photos()
+    p = photos[0]
+    outsider = APIClient()
+    outsider.force_authenticate(user=verified())
+    r = outsider.delete(f"/api/tournaments/{t.id}/lens/photos/{p.id}/")
+    assert r.status_code == 404
+    assert LensPhoto.objects.filter(pk=p.pk).exists()
+    img, thumb, _q_img, _q_thumb = _paths(p)
+    assert img.exists() and thumb.exists()
+    # Anonymous is refused outright.
+    r = APIClient().delete(f"/api/tournaments/{t.id}/lens/photos/{p.id}/")
+    assert r.status_code in (401, 403)
+
+
+def test_delete_replay_is_a_noop():
+    _admin, t, _c, photos, client = _setup_with_photos(2)
+    p = photos[0]
+    event_id = uuid.uuid4()
+    r = client.delete(f"/api/tournaments/{t.id}/lens/photos/{p.id}/?event_id={event_id}")
+    assert r.status_code == 200
+    # The same event replayed against a different photo must not delete it.
+    other = photos[1]
+    r = client.delete(
+        f"/api/tournaments/{t.id}/lens/photos/{other.id}/?event_id={event_id}"
+    )
+    assert r.status_code == 200
+    assert LensPhoto.objects.filter(pk=other.pk).exists()
+    assert AuditEvent.objects.filter(event_type="lens_photo_deleted").count() == 1

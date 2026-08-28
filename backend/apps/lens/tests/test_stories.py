@@ -378,3 +378,20 @@ def test_pending_story_never_public_even_with_approved_frames():
     url = f"/api/public/tournaments/{t.slug}/{t.id}/album/"
     body = APIClient().get(url).json()
     assert body["stories"] == []
+
+
+def test_manager_delete_of_a_frame_closes_gap_and_empty_story_dies():
+    admin, _t, campaign, _pass, token, _insts = _setup()
+    refs = [_upload(token, category=STORY).json()["photo"]["upload_ref"]
+            for _ in range(3)]
+    s = _own_story(token, campaign)
+    client = _manager(None, admin)
+    middle = LensPhoto.objects.get(upload_ref=refs[1])
+    r = client.delete(f"{_base_url(campaign)}/photos/{middle.id}/")
+    assert r.status_code == 200, r.content
+    positions = list(s.photos.order_by("position").values_list("position", flat=True))
+    assert positions == [1, 2]
+    for ref in (refs[0], refs[2]):
+        photo = LensPhoto.objects.get(upload_ref=ref)
+        assert client.delete(f"{_base_url(campaign)}/photos/{photo.id}/").status_code == 200
+    assert not LensStory.objects.filter(pk=s.pk).exists()

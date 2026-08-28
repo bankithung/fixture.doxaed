@@ -497,6 +497,27 @@ class LensPhotoHideView(GenericAPIView):
         return Response({"photo": _photo_payload(p)})
 
 
+class LensPhotoDeleteView(GenericAPIView):
+    """`DELETE /api/tournaments/{id}/lens/photos/{photo_id}/` — the manager
+    removes a photo for good (row + files). Hide is the reversible route;
+    this one is for uploads that should never have existed. `event_id` may
+    ride the query string, since a DELETE carries no body worth relying on."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, tournament_id, photo_id):
+        t = _get_managed_tournament(request, tournament_id)
+        photo_service.delete_photo(
+            photo=_get_photo(t, photo_id), by=request.user,
+            event_id=photo_service.as_uuid(
+                request.query_params.get("event_id")
+                or request.data.get("event_id")
+            ),
+            request=request,
+        )
+        return Response({"removed": True})
+
+
 class LensPhotoAwardView(GenericAPIView):
     permission_classes = [IsAuthenticated]
 

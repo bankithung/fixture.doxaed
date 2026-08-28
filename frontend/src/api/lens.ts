@@ -355,6 +355,11 @@ export const lensApi = {
       `${base(tid)}/photos/${encodeURIComponent(photoId)}/hide/`,
       body,
     ),
+  /** Delete for good (row + files). Hide is the reversible takedown. */
+  remove: (tid: string, photoId: string, body: { event_id: string }) =>
+    api.delete<{ removed: boolean }>(
+      `${base(tid)}/photos/${encodeURIComponent(photoId)}/?event_id=${encodeURIComponent(body.event_id)}`,
+    ),
   award: (
     tid: string,
     photoId: string,

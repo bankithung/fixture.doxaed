@@ -341,6 +341,59 @@ def hide_photo(*, photo, by, reason="", event_id=None, request=None):
     return photo
 
 
+def delete_photo(*, photo, by, event_id=None, request=None):
+    """Manager deletes a photo OUTRIGHT — row and files, wherever the files
+    are (MEDIA_ROOT for a live photo, quarantine for a hidden one).
+
+    Hide is the reversible takedown; this is for what should never have been
+    uploaded at all (owner 2026-08-28: "there is no delete image button").
+    The audit row is written INSIDE the transaction, before the row goes,
+    so the trail still names the school, the file and who removed it after
+    the photo itself is gone. A frame pulled out of a story closes the gap
+    the way the uploader's own removal does, and an emptied pending story
+    dies with it.
+    """
+    if _replayed("lens_photo_deleted", event_id):
+        return None
+    media = Path(django_settings.MEDIA_ROOT)
+    quarantine = _quarantine_root()
+    names = [n for n in (photo.image.name, photo.thumb.name) if n]
+    story = photo.story
+    with transaction.atomic():
+        emit_audit(
+            actor_user=by,
+            actor_role="admin",
+            event_type="lens_photo_deleted",
+            target_type="lens_photo",
+            target_id=photo.id,
+            payload_before={
+                "status": photo.status,
+                "institution_id": str(photo.institution_id),
+                "original_name": photo.original_name,
+                "caption": photo.caption,
+                "category": photo.category,
+                "story_id": str(story.id) if story is not None else None,
+            },
+            payload_after={"status": "deleted"},
+            organization_id=photo.organization_id,
+            tournament_id=photo.campaign.tournament_id,
+            idempotency_key=event_id,
+            request=request,
+        )
+        photo.delete()
+        if story is not None:
+            stories.remove_photo_from_story(photo)
+    # Files last, once the row is gone for good: a failed delete must not
+    # leave a photo the console still lists pointing at nothing.
+    for name in names:
+        for root in (media, quarantine):
+            try:
+                (root / name).unlink(missing_ok=True)
+            except OSError:
+                pass
+    return None
+
+
 def award_photo(*, photo, by, category, event_id=None, request=None):
     """Assign a winner-per-category award (spec D11): giving category X to this
     photo clears X from any other holder. Empty category clears this photo's

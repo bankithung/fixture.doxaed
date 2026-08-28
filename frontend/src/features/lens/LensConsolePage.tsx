@@ -12,6 +12,7 @@ import {
   ListOrdered,
   Plus,
   RefreshCw,
+  Trash2,
   X,
 } from "lucide-react";
 import { JudgingPanel } from "./judging/JudgingPanel";
@@ -405,6 +406,7 @@ export function LensConsolePage(): React.ReactElement {
     | { kind: "revoke"; passId: string; name: string }
     | { kind: "reissue-all"; count: number }
     | { kind: "new-card" }
+    | { kind: "delete-photo"; photoId: string }
     | null
   >(null);
   const [statusFilter, setStatusFilter] = useState<string>("pending");
@@ -670,6 +672,17 @@ export function LensConsolePage(): React.ReactElement {
       setHideReason("");
       setLightbox(null);
       push({ kind: "success", title: t("Photo hidden") });
+    },
+    onError: fail,
+  });
+  const deleteM = useMutation({
+    mutationFn: (photoId: string) =>
+      lensApi.remove(id, photoId, { event_id: newEventId() }),
+    onSuccess: () => {
+      invalidate();
+      setConfirm(null);
+      setLightbox(null);
+      push({ kind: "success", title: t("Photo deleted") });
     },
     onError: fail,
   });
@@ -1650,7 +1663,9 @@ export function LensConsolePage(): React.ReactElement {
                         ? t("New codes for every school?")
                       : confirm.kind === "rotate"
                           ? t("Regenerate this school's code?")
-                          : t("Remove this school from the album?")}
+                          : confirm.kind === "delete-photo"
+                            ? t("Delete this photo?")
+                            : t("Remove this school from the album?")}
               </DialogTitle>
               <DialogDescription>
                 {confirm.kind === "close"
@@ -1663,7 +1678,9 @@ export function LensConsolePage(): React.ReactElement {
                         ? `${confirm.count} ${t("schools get a fresh code, shown once. Every code already handed out stops working, so only do this if you need the whole list back.")}`
                       : confirm.kind === "rotate"
                           ? `${confirm.name}. ${t("Its old code stops working. The shared card is unchanged.")}`
-                          : `${confirm.name}. ${t("The school can no longer upload photos.")}`}
+                          : confirm.kind === "delete-photo"
+                            ? t("The photo and its file are removed for good and cannot be brought back. If you may want it later, hide it instead.")
+                            : `${confirm.name}. ${t("The school can no longer upload photos.")}`}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -1672,10 +1689,12 @@ export function LensConsolePage(): React.ReactElement {
               </Button>
               <Button
                 data-testid="confirm-action-btn"
+                disabled={deleteM.isPending}
                 variant={
                   confirm.kind === "revoke" ||
                   confirm.kind === "reissue-all" ||
-                  confirm.kind === "new-card"
+                  confirm.kind === "new-card" ||
+                  confirm.kind === "delete-photo"
                     ? "destructive"
                     : "default"
                 }
@@ -1689,7 +1708,12 @@ export function LensConsolePage(): React.ReactElement {
                     );
                   else if (confirm.kind === "rotate")
                     rotateM.mutate(confirm.passId);
-                  else revokeM.mutate(confirm.passId);
+                  else if (confirm.kind === "delete-photo") {
+                    // Stays open (disabled) until the server answers, so a
+                    // failure lands back on the confirm, not a closed lightbox.
+                    deleteM.mutate(confirm.photoId);
+                    return;
+                  } else revokeM.mutate(confirm.passId);
                   setConfirm(null);
                 }}
               >
@@ -1702,7 +1726,11 @@ export function LensConsolePage(): React.ReactElement {
 
       {/* Moderation lightbox. */}
       <Dialog
-        open={lightboxPhoto !== null && hideTarget === null}
+        open={
+          lightboxPhoto !== null &&
+          hideTarget === null &&
+          confirm?.kind !== "delete-photo"
+        }
         onOpenChange={(o) => {
           if (!o) setLightbox(null);
         }}
@@ -1749,6 +1777,20 @@ export function LensConsolePage(): React.ReactElement {
                 onClick={() => setLightbox(photos[lightboxIdx + 1]?.id ?? null)}
               >
                 {t("Next")}
+              </Button>
+              {/* Delete is the one-way door next to the reversible Hide:
+                  for uploads that should never have existed at all. */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive"
+                data-testid="delete-btn"
+                onClick={() =>
+                  setConfirm({ kind: "delete-photo", photoId: lightboxPhoto.id })
+                }
+              >
+                <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                {t("Delete")}
               </Button>
               {lightboxPhoto.status !== "hidden" ? (
                 <Button
