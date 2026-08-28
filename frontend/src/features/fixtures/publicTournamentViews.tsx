@@ -121,7 +121,7 @@ export function GroupTable({
       <table className="w-full text-[clamp(0.72rem,0.64rem+0.26vw,0.9rem)]">
         <thead>
           <tr className="border-b border-border bg-muted/40 text-left text-[0.625rem] uppercase tracking-wide text-muted-foreground">
-            <th className="px-2 py-1.5 sm:px-4 sm:py-2 font-semibold">{t("Team")}</th>
+            <th className="whitespace-nowrap px-3 py-1.5 sm:px-4 sm:py-2 font-semibold">{t("Team")}</th>
             {heads.map((h) => (
               <th key={h} className="px-2 py-2 text-right font-semibold">
                 {h}
@@ -139,9 +139,12 @@ export function GroupTable({
                 idx < 2 && "border-l-2 border-primary",
               )}
             >
-              <td className="px-4 py-1.5 font-medium">
+              <td className="whitespace-nowrap px-3 py-1.5 font-medium sm:px-4">
                 {/* Badge, then name: it sits at the row's own line height, so
-                    the stat columns keep their alignment. */}
+                    the stat columns keep their alignment. The name stays on
+                    ONE line — the table scrolls sideways inside its wrapper
+                    rather than folding "Holy Cross Higher Secondary School"
+                    into four rows on a phone (owner 2026-08-28). */}
                 <span className="flex items-center gap-1.5">
                   <span className="font-tabular text-xs text-muted-foreground">
                     {idx + 1}
@@ -164,7 +167,7 @@ export function GroupTable({
                 <td
                   key={i}
                   className={cn(
-                    "px-2 py-1.5 text-right font-tabular",
+                    "whitespace-nowrap px-2 py-1.5 text-right font-tabular",
                     i === 5
                       ? "font-semibold text-foreground"
                       : "text-muted-foreground",

@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
+import { RotateCcw, Trophy } from "lucide-react";
 import {
   buildCompetitions,
   usePublicTournament,
@@ -7,9 +8,15 @@ import {
 } from "@/features/fixtures/publicTournament";
 import {
   Bookmark,
+  Chip,
+  FilterFab,
   GroupTable,
 } from "@/features/fixtures/publicTournamentViews";
 import { splitLabel } from "@/features/fixtures/publicTournament";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { useBreakpoint } from "@/lib/useBreakpoint";
+import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { PublicViewerHeader } from "./PublicViewerHeader";
 
@@ -19,10 +26,20 @@ import { PublicViewerHeader } from "./PublicViewerHeader";
  * sepak table reads P W L Sets +/-, never a draw column). Reads the same
  * schedule + standings queries as the Matches and Knockout tabs, so switching
  * tabs is instant and the SSE tick keeps every table live.
+ *
+ * ONE section, built like the Matches page (owner 2026-08-28): the
+ * tournament name is the section's own header band — no "Standings" title
+ * and strap-line, the tab already says that — and the tables live directly
+ * under it. On a desk the sport / category bookmarks sit inside the panel;
+ * on a phone they become the floating Filter pill + bottom sheet the Matches
+ * page wears, so the picker never scrolls away and the tables get the whole
+ * width of the screen.
  */
 export function PublicStandingsPage(): React.ReactElement {
   const { slug = "", id = "" } = useParams();
   const [params, setParams] = useSearchParams();
+  const { isMobile } = useBreakpoint();
+  const [sheetOpen, setSheetOpen] = useState(false);
   const { scheduleQ, standingsQ, connected } = usePublicTournament(
     slug,
     id,
@@ -94,6 +111,87 @@ export function PublicStandingsPage(): React.ReactElement {
   const loading =
     scheduleQ.isLoading || (scheduleQ.data !== undefined && standingsQ.isLoading);
 
+  const compName = (c: Competition): string =>
+    splitLabel(c.label).slice(1).join(" · ") || c.label;
+  const totalComps = all.reduce((n, [, comps]) => n + comps.length, 0);
+  const shownTables = sections.reduce(
+    (n, [, comps]) => n + comps.reduce((m, c) => m + c.groups.length, 0),
+    0,
+  );
+  const activeFilters = (sport ? 1 : 0) + (comp ? 1 : 0);
+  const pickedComp = compsOfSport.find((c) => c.key === comp);
+  /** What is on screen, as the phone's pill reads it. */
+  const scopeName = !sport
+    ? t("All sports")
+    : pickedComp
+      ? `${sport} · ${compName(pickedComp)}`
+      : sport;
+
+  /* Authored once, worn by whichever surface fits: bookmarks on a desk, chips
+     in the phone's sheet. */
+  const sportPicker = (
+    variant: "bookmark" | "chip",
+  ): React.ReactElement => {
+    const Pick = variant === "bookmark" ? Bookmark : Chip;
+    return (
+      <div
+        role="tablist"
+        aria-label={t("Sports")}
+        className="flex flex-wrap items-center gap-1.5 print:hidden"
+      >
+        <Pick
+          testid="standings-sport-all"
+          active={!sport}
+          onClick={() => setFilter({ sport: "", comp: "" })}
+          label={t("All sports")}
+          count={totalComps}
+        />
+        {all.map(([s, comps]) => (
+          <Pick
+            key={s}
+            testid={`standings-sport-pick-${s}`}
+            active={sport === s}
+            onClick={() => setFilter({ sport: s, comp: "" })}
+            label={s}
+            count={comps.length}
+          />
+        ))}
+      </div>
+    );
+  };
+  const compPicker = (
+    variant: "bookmark" | "chip",
+  ): React.ReactElement | null => {
+    if (!sport || compsOfSport.length <= 1) return null;
+    const Pick = variant === "bookmark" ? Bookmark : Chip;
+    return (
+      <div
+        role="tablist"
+        aria-label={t("Categories")}
+        className={cn(
+          "flex flex-wrap items-center gap-1.5",
+          variant === "bookmark" && "border-b border-border pb-3",
+        )}
+      >
+        <Pick
+          testid="standings-comp-all"
+          active={!comp}
+          onClick={() => setFilter({ comp: "" })}
+          label={t("All categories")}
+        />
+        {compsOfSport.map((c) => (
+          <Pick
+            key={c.key}
+            testid={`standings-comp-pick-${c.key}`}
+            active={comp === c.key}
+            onClick={() => setFilter({ comp: c.key })}
+            label={splitLabel(c.label).slice(1).join(" ") || c.label}
+          />
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="flex min-h-screen flex-col print-doc">
       <PublicViewerHeader
@@ -103,135 +201,194 @@ export function PublicStandingsPage(): React.ReactElement {
         active="standings"
         connected={connected}
       />
-      <main className="flex w-full max-w-full min-w-0 flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
-       <section className="flex w-full min-w-0 flex-col gap-4 rounded-xl border border-border bg-card p-3 shadow-sm sm:p-5">
-        <header className="min-w-0">
-          <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
-            {t("Standings")}
-          </h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {t("Group tables, competition by competition")}
-          </p>
-        </header>
-        {loading ? (
-          <div aria-busy="true" className="h-48 animate-pulse rounded-xl bg-muted/40" />
-        ) : scheduleQ.isError ? (
-          <p
-            role="alert"
-            className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground"
-          >
-            {t("These standings are not available.")}
-          </p>
-        ) : all.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card p-8 text-center">
-            <p className="text-sm font-medium">{t("No group tables yet.")}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t("Tables appear when the draw places teams into groups.")}
-            </p>
+      <main className="flex w-full max-w-full min-w-0 flex-1 flex-col p-0 sm:px-6 sm:py-4 lg:px-8">
+        {/* ONE section, nothing outside it: the tournament name is its header
+            band and the tables sit straight under it. Edge to edge on a phone
+            (the screen is the card), a card on a desk. */}
+        <section className="flex min-w-0 flex-1 flex-col border-y border-border bg-card print:border-0 sm:rounded-xl sm:border sm:shadow-sm">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border px-3 py-3 print:hidden sm:px-4">
+            <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
+              {tournamentName ?? t("Standings")}
+            </h1>
+            {!loading && !scheduleQ.isError ? (
+              <span
+                data-testid="standings-indicator"
+                className="inline-flex items-center gap-1.5 font-tabular text-xs text-muted-foreground"
+              >
+                {shownTables} {shownTables === 1 ? t("table") : t("tables")} ·{" "}
+                {connected ? (
+                  <>
+                    <span className="inline-flex h-2 w-2 rounded-full bg-primary" />
+                    <span className="font-medium text-primary">
+                      {t("live updates")}
+                    </span>
+                  </>
+                ) : (
+                  t("updates automatically")
+                )}
+              </span>
+            ) : null}
           </div>
-        ) : (
-          /* ONE combined sheet: sport bookmarks on top, category bookmarks
-             inside, every table in the same panel with a clear rule between
-             categories (owner 2026-07-13). */
-          <div data-testid="standings-board" className="flex flex-col">
-            <div
-              role="tablist"
-              aria-label={t("Sports")}
-              className="flex flex-wrap items-center gap-1.5 print:hidden"
+
+          {loading ? (
+            <div aria-busy="true" className="m-3 h-48 animate-pulse rounded-xl bg-muted/40 sm:m-4" />
+          ) : scheduleQ.isError ? (
+            <p
+              role="alert"
+              className="p-8 text-center text-sm text-muted-foreground"
             >
-              <Bookmark
-                testid="standings-sport-all"
-                active={!sport}
-                onClick={() => setFilter({ sport: "", comp: "" })}
-                label={t("All sports")}
-                count={all.reduce((n, [, comps]) => n + comps.length, 0)}
-              />
-              {all.map(([s, comps]) => (
-                <Bookmark
-                  key={s}
-                  testid={`standings-sport-pick-${s}`}
-                  active={sport === s}
-                  onClick={() => setFilter({ sport: s, comp: "" })}
-                  label={s}
-                  count={comps.length}
-                />
-              ))}
+              {t("These standings are not available.")}
+            </p>
+          ) : all.length === 0 ? (
+            <div className="p-8 text-center">
+              <p className="text-sm font-medium">{t("No group tables yet.")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("Tables appear when the draw places teams into groups.")}
+              </p>
             </div>
+          ) : (
+            /* ONE combined sheet: sport bookmarks on top, category bookmarks
+               inside, every table in the same panel with a clear rule between
+               categories (owner 2026-07-13). On a phone the bookmarks are the
+               floating pill instead, and the panel has no frame of its own. */
+            <div
+              data-testid="standings-board"
+              className={cn("flex flex-col", !isMobile && "p-4 sm:p-5")}
+            >
+              {!isMobile ? sportPicker("bookmark") : null}
 
-            <div className="flex flex-col gap-5 rounded-xl rounded-tl-none border border-border bg-card p-4 shadow-sm sm:p-5">
-              {sport && compsOfSport.length > 1 ? (
-                <div
-                  role="tablist"
-                  aria-label={t("Categories")}
-                  className="flex flex-wrap items-center gap-1.5 border-b border-border pb-3"
-                >
-                  <Bookmark
-                    testid="standings-comp-all"
-                    active={!comp}
-                    onClick={() => setFilter({ comp: "" })}
-                    label={t("All categories")}
-                  />
-                  {compsOfSport.map((c) => (
-                    <Bookmark
-                      key={c.key}
-                      testid={`standings-comp-pick-${c.key}`}
-                      active={comp === c.key}
-                      onClick={() => setFilter({ comp: c.key })}
-                      label={splitLabel(c.label).slice(1).join(" ") || c.label}
-                    />
-                  ))}
-                </div>
-              ) : null}
+              <div
+                className={cn(
+                  "flex flex-col gap-4 sm:gap-5",
+                  !isMobile &&
+                    "rounded-xl rounded-tl-none border border-border bg-card p-4 sm:p-5",
+                )}
+              >
+                {!isMobile ? compPicker("bookmark") : null}
 
-              {sections.map(([s, comps]) => (
-                <section
-                  key={s}
-                  data-testid={`standings-sport-${s}`}
-                  className="flex flex-col gap-5"
-                >
-                  {!sport ? (
-                    <h2 className="text-base font-semibold">{s}</h2>
-                  ) : null}
-                  {comps.map((c) => (
-                    <div
-                      key={c.key}
-                      data-testid={`standings-comp-${c.key}`}
-                      className="flex flex-col overflow-hidden rounded-lg border border-border"
-                    >
-                      {/* Each category is its OWN titled block: a real
-                          heading on a tinted band, not tiny chips. */}
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-muted/60 px-3 py-2 sm:px-4 sm:py-2.5">
-                        <h3 className="text-[0.8125rem] font-semibold sm:text-sm">
-                          {splitLabel(c.label).slice(1).join(" · ") || c.label}
-                        </h3>
-                        <span className="font-tabular text-xs text-muted-foreground">
-                          {c.groups.length}{" "}
-                          {c.groups.length === 1 ? t("group") : t("groups")}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 items-start gap-x-6 gap-y-4 p-2 sm:gap-y-5 sm:p-4 xl:grid-cols-2">
-                        {c.groups.map((g) => (
-                          <div key={g.key} className="flex flex-col">
-                            <h4 className="pb-1 text-xs font-semibold uppercase tracking-wide text-primary">
-                              {g.label}
-                            </h4>
-                            <div className="overflow-hidden rounded-lg border border-border">
-                              <GroupTable
-                                rows={g.standing!.rows}
-                                family={c.family}
-                              />
+                {sections.map(([s, comps]) => (
+                  <section
+                    key={s}
+                    data-testid={`standings-sport-${s}`}
+                    className="flex flex-col gap-4 sm:gap-5"
+                  >
+                    {!sport ? (
+                      <h2 className="px-3 pt-3 text-base font-semibold sm:px-0 sm:pt-0">
+                        {s}
+                      </h2>
+                    ) : null}
+                    {comps.map((c) => (
+                      <div
+                        key={c.key}
+                        data-testid={`standings-comp-${c.key}`}
+                        className="flex flex-col overflow-hidden border-y border-border sm:rounded-lg sm:border"
+                      >
+                        {/* Each category is its OWN titled block: a real
+                            heading on a tinted band, not tiny chips. */}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-muted/60 px-3 py-2 sm:px-4 sm:py-2.5">
+                          <h3 className="text-[0.8125rem] font-semibold sm:text-sm">
+                            {compName(c)}
+                          </h3>
+                          <span className="font-tabular text-xs text-muted-foreground">
+                            {c.groups.length}{" "}
+                            {c.groups.length === 1 ? t("group") : t("groups")}
+                          </span>
+                        </div>
+                        {/* On a phone the tables run edge to edge: a long
+                            school name stays on one line and the table
+                            scrolls sideways instead of wrapping to four. */}
+                        <div className="grid grid-cols-1 items-start gap-x-6 gap-y-3 py-2 sm:gap-y-5 sm:p-4 xl:grid-cols-2">
+                          {c.groups.map((g) => (
+                            <div key={g.key} className="flex min-w-0 flex-col">
+                              <h4 className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-primary sm:px-0">
+                                {g.label}
+                              </h4>
+                              <div className="min-w-0 overflow-hidden border-y border-border sm:rounded-lg sm:border">
+                                <GroupTable
+                                  rows={g.standing!.rows}
+                                  family={c.family}
+                                />
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </section>
-              ))}
+                    ))}
+                  </section>
+                ))}
+              </div>
             </div>
+          )}
+        </section>
+
+        {/* The phone's floating FILTER pill, the one the Matches page wears:
+            it names what is on screen and opens the picker from anywhere on
+            the page instead of a tab row that scrolled away. */}
+        {isMobile && !loading && all.length > 0 ? (
+          <FilterFab
+            testid="standings-filters-open"
+            onClick={() => setSheetOpen(true)}
+            label={scopeName}
+            count={activeFilters}
+            icon={Trophy}
+          />
+        ) : null}
+
+        <Dialog
+          open={isMobile && sheetOpen}
+          onOpenChange={setSheetOpen}
+          variant="sheet"
+          ariaLabel={t("Filter the standings")}
+        >
+          <div
+            data-testid="standings-filter-sheet"
+            className="flex flex-col gap-4"
+          >
+            <span
+              aria-hidden="true"
+              className="mx-auto h-1 w-10 shrink-0 rounded-full bg-border"
+            />
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold">{t("Filters")}</h2>
+              {activeFilters > 0 ? (
+                <button
+                  type="button"
+                  data-testid="standings-sheet-reset"
+                  onClick={() => setFilter({ sport: "", comp: "" })}
+                  className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary"
+                >
+                  <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t("Reset")}
+                </button>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                {t("Sport")}
+              </span>
+              {sportPicker("chip")}
+            </div>
+
+            {compPicker("chip") ? (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {t("Category")}
+                </span>
+                {compPicker("chip")}
+              </div>
+            ) : null}
+
+            <Button
+              data-testid="standings-sheet-apply"
+              className="h-12 w-full text-base"
+              onClick={() => setSheetOpen(false)}
+            >
+              {t("Show")} {shownTables}{" "}
+              {shownTables === 1 ? t("table") : t("tables")}
+            </Button>
           </div>
-        )}
-       </section>
+        </Dialog>
       </main>
     </div>
   );

@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -101,6 +101,21 @@ function mount() {
     </QueryClientProvider>,
   );
 }
+
+const REAL_WIDTH = window.innerWidth;
+
+function setWidth(px: number): void {
+  act(() => {
+    Object.defineProperty(window, "innerWidth", {
+      value: px,
+      configurable: true,
+      writable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+  });
+}
+
+afterEach(() => setWidth(REAL_WIDTH));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -205,6 +220,36 @@ describe("PublicStandingsPage", () => {
     // Even with a knockout stage in the payload there is no third tab: the
     // draw lives beside the matches (owner 2026-08-21).
     expect(screen.queryByTestId("viewer-tab-bracket")).toBeNull();
+  });
+
+  it("is ONE section headed by the tournament name, not a 'Standings' title", async () => {
+    mount();
+    await screen.findByTestId("standings-sport-Football");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Demo Cup");
+    expect(screen.queryByText("Group tables, competition by competition")).toBeNull();
+    expect(screen.getByTestId("standings-indicator")).toHaveTextContent("2 tables");
+  });
+
+  it("on a phone the bookmarks become the floating Filter pill and a sheet", async () => {
+    setWidth(360);
+    mount();
+    await screen.findByTestId("standings-sport-Football");
+    // No tab row on a phone; the pill names what is on screen.
+    expect(screen.queryByRole("tab", { name: /All sports/ })).toBeNull();
+    const fab = screen.getByTestId("standings-filters-open");
+    expect(fab).toHaveTextContent("All sports");
+
+    await userEvent.click(fab);
+    const sheet = await screen.findByTestId("standings-filter-sheet");
+    await userEvent.click(within(sheet).getByTestId("standings-sport-pick-Football"));
+    expect(within(sheet).getByTestId("standings-sheet-apply")).toHaveTextContent("Show 1 table");
+    await userEvent.click(within(sheet).getByTestId("standings-sheet-apply"));
+
+    expect(screen.queryByTestId("standings-filter-sheet")).toBeNull();
+    expect(screen.getByTestId("standings-sport-Football")).toBeInTheDocument();
+    expect(screen.queryByTestId("standings-sport-Table Tennis")).toBeNull();
+    expect(screen.getByTestId("standings-filters-open")).toHaveTextContent("Football");
+    expect(screen.getByTestId("standings-filters-open")).toHaveTextContent("Filter 1");
   });
 
   it("renders an empty state when no group standings exist", async () => {
