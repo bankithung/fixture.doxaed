@@ -75,7 +75,11 @@ def album_payload(a: VideoAlbum) -> dict:
     videos = [
         v for v in a.videos.all() if v.deleted_at is None
     ]
-    videos.sort(key=lambda v: (v.position, v.created_at))
+    # Newest first (owner 2026-08-29): footage is added as the day goes on,
+    # and the clip a viewer is looking for is the one that just went up. An
+    # explicit position still wins when the host has set one.
+    videos.sort(key=lambda v: v.created_at, reverse=True)
+    videos.sort(key=lambda v: v.position)
     return {
         "id": str(a.id),
         "title": a.title,
@@ -90,7 +94,7 @@ def _albums(tournament):
     return (
         VideoAlbum.objects.filter(tournament=tournament, deleted_at__isnull=True)
         .prefetch_related("videos", "videos__institutions")
-        .order_by("position", "created_at")
+        .order_by("position", "-created_at")
     )
 
 

@@ -179,3 +179,34 @@ def test_a_viewer_may_read_but_not_write_and_a_stranger_sees_nothing():
     assert stranger.get(f"/api/tournaments/{t.id}/video-albums/").status_code == 404
     assert stranger.post(f"/api/tournaments/{t.id}/video-albums/",
                          {"title": "Mine"}, format="json").status_code == 404
+
+
+def test_the_newest_video_and_album_come_first_for_host_and_public():
+    """Footage is added as the day goes on, and the clip a viewer wants is the
+    one that just went up — so both pages lead with it (owner 2026-08-29)."""
+    t, admin = _setup()
+    c = _client(admin)
+    aid = c.post(f"/api/tournaments/{t.id}/video-albums/",
+                 {"title": "Day 1"}, format="json").json()["id"]
+    for ev in ("Morning", "Afternoon", "Evening"):
+        c.post(f"/api/tournaments/{t.id}/video-albums/{aid}/videos/",
+               {"event": ev, "youtube_url": "https://youtu.be/dQw4w9WgXcQ"},
+               format="json")
+    later = c.post(f"/api/tournaments/{t.id}/video-albums/",
+                   {"title": "Day 2"}, format="json").json()["id"]
+    c.post(f"/api/tournaments/{t.id}/video-albums/{later}/videos/",
+           {"event": "Final", "youtube_url": "https://youtu.be/dQw4w9WgXcQ"},
+           format="json")
+
+    host = c.get(f"/api/tournaments/{t.id}/video-albums/").json()
+    assert [a["title"] for a in host["albums"]] == ["Day 2", "Day 1"]
+    assert [v["event"] for v in host["albums"][1]["videos"]] == [
+        "Evening", "Afternoon", "Morning",
+    ]
+    public = APIClient().get(
+        f"/api/public/tournaments/{t.slug}/{t.id}/videos/"
+    ).json()
+    assert [a["title"] for a in public["albums"]] == ["Day 2", "Day 1"]
+    assert [v["event"] for v in public["albums"][1]["videos"]] == [
+        "Evening", "Afternoon", "Morning",
+    ]

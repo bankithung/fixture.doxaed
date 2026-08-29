@@ -31,7 +31,8 @@ class VideoAlbum(models.Model):
     )
     title = models.CharField(max_length=120)
     description = models.TextField(blank=True, default="")
-    #: Host-authored running order; ties fall back to creation time.
+    #: Host-authored running order; ties fall back to creation time, newest
+    #: first — the album that just opened is the one being filled.
     position = models.PositiveIntegerField(default=0)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -45,7 +46,7 @@ class VideoAlbum(models.Model):
     deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
-        ordering = ["position", "created_at"]
+        ordering = ["position", "-created_at"]
         indexes = [
             models.Index(fields=["tournament", "position"], name="video_album_ord_idx"),
         ]
@@ -101,7 +102,7 @@ class TournamentVideo(models.Model):
     deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
-        ordering = ["position", "created_at"]
+        ordering = ["position", "-created_at"]
         indexes = [
             models.Index(fields=["album", "position"], name="video_item_ord_idx"),
         ]

@@ -16,6 +16,8 @@ vi.mock("@/api/videos", async (importOriginal) => {
       albums: vi.fn(),
       createAlbum: vi.fn(),
       addVideo: vi.fn(),
+      updateVideo: vi.fn(),
+      updateAlbum: vi.fn(),
       removeAlbum: vi.fn(),
       removeVideo: vi.fn(),
     },
@@ -33,7 +35,9 @@ const PAYLOAD: VideoAlbumsPayload = {
         {
           id: "v1", event: "U-14 Boys Final", note: "",
           youtube_url: "https://youtu.be/dQw4w9WgXcQ", facebook_url: "",
-          instagram_url: "", youtube_id: "dQw4w9WgXcQ", position: 1, played_on: null, tags: [], schools: [],
+          instagram_url: "", youtube_id: "dQw4w9WgXcQ", position: 1,
+          played_on: "2026-08-28", tags: ["Table Tennis"],
+          schools: [{ id: "i1", name: "Grace Academy", crest: "" }],
         },
       ],
     },
@@ -69,6 +73,90 @@ describe("VideoAlbumsPage", () => {
       youtube_url: "https://youtu.be/abc123", facebook_url: "",
       instagram_url: "", youtube_id: "abc123", position: 0, played_on: null, tags: [], schools: [],
     });
+    vi.mocked(videosApi.updateVideo).mockResolvedValue(PAYLOAD.albums[0]!.videos[0]!);
+    vi.mocked(videosApi.updateAlbum).mockResolvedValue(PAYLOAD.albums[0]!);
+    vi.mocked(videosApi.removeVideo).mockResolvedValue({ removed: true });
+    vi.mocked(videosApi.removeAlbum).mockResolvedValue({ removed: true });
+  });
+
+  it("edits a video from a button under its card, with every field prefilled", async () => {
+    renderPage();
+    const album = await screen.findByTestId("album-a1");
+    // The button is spelled out under the card, not hidden over the thumbnail.
+    const edit = within(album).getByTestId("video-edit-v1");
+    expect(edit).toHaveTextContent("Edit");
+    await userEvent.click(edit);
+
+    // Fixing a wrong link must not mean retyping everything.
+    expect(screen.getByTestId("video-event-a1")).toHaveValue("U-14 Boys Final");
+    expect(screen.getByTestId("video-day-a1")).toHaveValue("2026-08-28");
+    expect(screen.getByTestId("video-yt-input-a1")).toHaveValue(
+      "https://youtu.be/dQw4w9WgXcQ",
+    );
+    const schoolBox = within(screen.getByTestId("video-schools-a1")).getByRole(
+      "checkbox",
+    );
+    expect(schoolBox).toBeChecked();
+
+    await userEvent.clear(screen.getByTestId("video-yt-input-a1"));
+    await userEvent.type(
+      screen.getByTestId("video-yt-input-a1"),
+      "https://youtu.be/fixed01",
+    );
+    const save = screen.getByTestId("video-save-a1");
+    expect(save).toHaveTextContent("Save changes");
+    await userEvent.click(save);
+    await waitFor(() =>
+      expect(videosApi.updateVideo).toHaveBeenCalledWith("t1", "v1", {
+        event: "U-14 Boys Final",
+        played_on: "2026-08-28",
+        tags: ["Table Tennis"],
+        schools: ["i1"],
+        youtube_url: "https://youtu.be/fixed01",
+        facebook_url: "",
+        instagram_url: "",
+      }),
+    );
+    expect(videosApi.addVideo).not.toHaveBeenCalled();
+  });
+
+  it("deletes a video only after the host confirms", async () => {
+    renderPage();
+    const album = await screen.findByTestId("album-a1");
+    await userEvent.click(within(album).getByTestId("video-remove-v1"));
+    // Asking is the point: a thumb slips.
+    expect(videosApi.removeVideo).not.toHaveBeenCalled();
+    const modal = await screen.findByTestId("confirm-delete-modal");
+    expect(modal).toHaveTextContent("U-14 Boys Final");
+    await userEvent.click(screen.getByTestId("confirm-delete-btn"));
+    await waitFor(() =>
+      expect(videosApi.removeVideo).toHaveBeenCalledWith("t1", "v1"),
+    );
+  });
+
+  it("renames an album, and deletes one only after confirming", async () => {
+    renderPage();
+    const album = await screen.findByTestId("album-a1");
+    await userEvent.click(within(album).getByTestId("album-edit-a1"));
+    const title = await screen.findByTestId("album-edit-title-input");
+    expect(title).toHaveValue("Day 1");
+    await userEvent.clear(title);
+    await userEvent.type(title, "Friday");
+    await userEvent.click(screen.getByTestId("album-edit-save-btn"));
+    await waitFor(() =>
+      expect(videosApi.updateAlbum).toHaveBeenCalledWith("t1", "a1", {
+        title: "Friday",
+        description: "",
+      }),
+    );
+
+    await userEvent.click(within(album).getByTestId("album-remove-a1"));
+    expect(videosApi.removeAlbum).not.toHaveBeenCalled();
+    await screen.findByTestId("confirm-delete-modal");
+    await userEvent.click(screen.getByTestId("confirm-delete-btn"));
+    await waitFor(() =>
+      expect(videosApi.removeAlbum).toHaveBeenCalledWith("t1", "a1"),
+    );
   });
 
   it("creates an album from its own modal", async () => {
@@ -134,6 +222,8 @@ describe("VideoAlbumsPage", () => {
     await screen.findByTestId("album-a1");
     expect(screen.queryByTestId("create-album-btn")).toBeNull();
     expect(screen.queryByTestId("album-add-toggle-a1")).toBeNull();
+    expect(screen.queryByTestId("album-edit-a1")).toBeNull();
+    expect(screen.queryByTestId("video-edit-v1")).toBeNull();
     expect(screen.queryByTestId("video-remove-v1")).toBeNull();
   });
 });
