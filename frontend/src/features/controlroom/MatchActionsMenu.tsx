@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
+  CalendarCheck,
   CalendarClock,
   CalendarOff,
   CircleStop,
@@ -201,7 +202,7 @@ function ScoreStepper({
 
 /** Match state verbs beyond start/complete (PRD 5.5): every one carries a
  * required reason (mid-play interruptions must be defensible in a dispute). */
-type StateVerbKey = "postpone" | "cancel" | "abandon" | "replay";
+type StateVerbKey = "postpone" | "resume" | "cancel" | "abandon" | "replay";
 
 const STATE_VERBS: Record<
   StateVerbKey,
@@ -212,6 +213,17 @@ const STATE_VERBS: Record<
     to: "postponed",
     title: "Postpone this match?",
     hint: "The match pauses until it is reslotted or resumed. The score so far is kept.",
+    danger: false,
+  },
+  // Postponed → scheduled. The state machine always allowed it, but the menu
+  // only offered "Cancel" for a postponed match, so a walkover (which needs
+  // a scheduled/in-play match) was unreachable from the UI (owner report
+  // 2026-08-29: U-14 girls' 3rd place, one school never turned up).
+  resume: {
+    label: "Return to schedule",
+    to: "scheduled",
+    title: "Return this match to the schedule?",
+    hint: "The match goes back to Scheduled at its current slot, so it can be started, reslotted, or awarded as a walkover.",
     danger: false,
   },
   cancel: {
@@ -246,7 +258,7 @@ export function stateVerbsFor(
   const out: StateVerbKey[] = [];
   if (perms.canManage) {
     if (match.status === "scheduled" || inPlay) out.push("postpone", "cancel");
-    if (match.status === "postponed") out.push("cancel");
+    if (match.status === "postponed") out.push("resume", "cancel");
     if (match.status === "abandoned") out.push("replay");
   }
   // Abandoning is a pitch-side call — referees/scorers hold it too.
@@ -819,6 +831,7 @@ export function MatchActionsMenu({
 
   const VERB_ICONS: Record<StateVerbKey, typeof CalendarOff> = {
     postpone: CalendarOff,
+    resume: CalendarCheck,
     cancel: OctagonX,
     abandon: CircleStop,
     replay: RotateCcw,
@@ -1318,6 +1331,8 @@ export function RowActions({
             >
               {v === "postpone" ? (
                 <CalendarOff aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+              ) : v === "resume" ? (
+                <CalendarCheck aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
               ) : v === "cancel" ? (
                 <OctagonX aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
               ) : v === "abandon" ? (
