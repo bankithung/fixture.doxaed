@@ -190,6 +190,31 @@ def test_a_revoked_link_stops_working():
     assert APIClient().get(f"/api/lens/j/{token}/").status_code == 404
 
 
+def test_a_revoked_judges_sheets_leave_the_verdict():
+    admin, campaign, pass_ = _campaign()
+    photo = _photo(pass_, caption="Scored, then the judge was withdrawn")
+    judge, token = judging.appoint(campaign=campaign, name="Tester", by=admin)
+    keeper, token2 = judging.appoint(campaign=campaign, name="Keeper", by=admin)
+    c = APIClient()
+    for tok, timing in ((token, 19), (token2, 30)):
+        assert c.post(f"/api/lens/j/{tok}/scores/",
+                      {"kind": "photo", "entry_id": str(photo.upload_ref),
+                       "marks": {"timing": timing}},
+                      format="json").status_code == 200
+    entry = judging.results(campaign)[0]["entries"][0]
+    assert entry["judges"] == 2
+    assert entry["average"] == 24.5
+
+    judging.revoke(judge=judge)
+    entry = judging.results(campaign)[0]["entries"][0]
+    # Only the remaining judge's sheet counts; the row itself is kept so an
+    # un-revoke or audit still has it.
+    assert entry["judges"] == 1
+    assert entry["average"] == 30
+    assert [s["judge"] for s in entry["sheets"]] == [keeper.name]
+    assert LensScore.objects.filter(judge=judge).exists()
+
+
 def test_only_published_entries_reach_the_panel():
     """"Publication in the gallery means an entry has been approved for
     judging" — so a hidden photo leaves the pool."""

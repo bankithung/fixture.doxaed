@@ -220,12 +220,16 @@ def results(campaign) -> list[dict]:
     Ranked by the AVERAGE of the sheets returned, not the sum: a judge who has
     not scored an entry must not push it down the order. Entries nobody scored
     are listed last, and say so.
+
+    A revoked judge's sheets are left out: revoking is how an organiser
+    withdraws someone from the panel, and a withdrawn judge's marks must not
+    keep steering the verdict.
     """
     rows = entries(campaign, anonymous=False)
     scores: dict[str, list[LensScore]] = {}
-    for s in LensScore.objects.filter(campaign=campaign).select_related(
-        "photo", "story"
-    ):
+    for s in LensScore.objects.filter(
+        campaign=campaign, judge__revoked_at__isnull=True,
+    ).select_related("photo", "story", "judge"):
         key = str(s.story_id) if s.story_id else str(s.photo.upload_ref)
         scores.setdefault(key, []).append(s)
 
