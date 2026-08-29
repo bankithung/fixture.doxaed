@@ -99,9 +99,16 @@ export function Bookmark({
 export function GroupTable({
   rows,
   family = "timed",
+  sheetFor,
 }: {
   rows: StandingRow[];
   family?: "timed" | "target";
+  /** Set = the Player names switch is on: what it returns is printed under
+   * the team's name (its team sheet), so the table names who is playing, not
+   * only which school entered (owner 2026-08-29). A render prop rather than
+   * the sheet itself: the sheet lives beside the match sheet, which imports
+   * from here. */
+  sheetFor?: (teamId: string) => React.ReactNode;
 }): React.ReactElement {
   // Rendered under /t/:slug/:id — each team links to its public profile
   // (record, form, every played and upcoming match).
@@ -177,6 +184,7 @@ export function GroupTable({
                     </span>
                   )}
                 </span>
+                {sheetFor ? sheetFor(r.team_id) : null}
               </td>
               {cells(r).map((v, i) => (
                 <td

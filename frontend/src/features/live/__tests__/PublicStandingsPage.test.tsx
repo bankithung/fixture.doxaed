@@ -14,6 +14,7 @@ vi.mock("@/api/tournaments", async (importOriginal) => {
       ...actual.tournamentsApi,
       publicSchedule: vi.fn(),
       publicStandings: vi.fn(),
+      publicRosters: vi.fn(),
     },
   };
 });
@@ -123,6 +124,17 @@ beforeEach(() => {
     payload([FOOTBALL, TT]),
   );
   vi.mocked(tournamentsApi.publicStandings).mockResolvedValue(STANDINGS);
+  vi.mocked(tournamentsApi.publicRosters).mockResolvedValue({
+    teams: [
+      { id: "tm1", name: "Alpha FC", school: "North", players: [
+        { id: "p1", name: "Asha Rai", jersey_no: 7, captain: true },
+        { id: "p2", name: "Ben Lotha", jersey_no: null, captain: false },
+      ] },
+      { id: "tm5", name: "Echo TT", school: "East", players: [
+        { id: "p5", name: "Ela Sema", jersey_no: null, captain: false },
+      ] },
+    ],
+  } as never);
 });
 
 describe("PublicStandingsPage", () => {
@@ -250,6 +262,27 @@ describe("PublicStandingsPage", () => {
     expect(screen.queryByTestId("standings-sport-Table Tennis")).toBeNull();
     expect(screen.getByTestId("standings-filters-open")).toHaveTextContent("Football");
     expect(screen.getByTestId("standings-filters-open")).toHaveTextContent("Filter 1");
+  });
+
+  it("names every table's players by DEFAULT, each category on its own switch", async () => {
+    mount();
+    const alpha = await screen.findByTestId("group-standing-tm1");
+    // The row says who is playing, not only which school entered.
+    await within(alpha).findByText(/Asha Rai/);
+    expect(alpha).toHaveTextContent("7. Asha Rai (C)");
+    expect(alpha).toHaveTextContent("Ben Lotha");
+    // A team with no published sheet says so rather than leaving a blank.
+    expect(screen.getByTestId("group-standing-tm2")).toHaveTextContent("No team sheet");
+    expect(screen.getByTestId("group-standing-tm5")).toHaveTextContent("Ela Sema");
+
+    // Folding one category's names leaves the other's alone.
+    const fbToggle = screen.getByTestId("standings-names-toggle-football.u15");
+    expect(fbToggle).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(fbToggle);
+    expect(fbToggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByTestId("group-standing-tm1")).not.toHaveTextContent("Asha Rai");
+    expect(screen.getByTestId("group-standing-tm5")).toHaveTextContent("Ela Sema");
+    expect(tournamentsApi.publicRosters).toHaveBeenCalledWith("cup", "t1");
   });
 
   it("renders an empty state when no group standings exist", async () => {

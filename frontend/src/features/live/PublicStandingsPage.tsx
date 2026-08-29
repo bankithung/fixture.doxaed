@@ -3,9 +3,13 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { RotateCcw, Trophy } from "lucide-react";
 import {
   buildCompetitions,
+  usePublicRosters,
   usePublicTournament,
   type Competition,
+  type RosterIndex,
 } from "@/features/fixtures/publicTournament";
+import { TeamSheet } from "@/features/fixtures/MatchSheet";
+import { NamesToggle } from "@/features/fixtures/PublicBracketBoard";
 import {
   Bookmark,
   BoardBand,
@@ -45,6 +49,13 @@ export function PublicStandingsPage(): React.ReactElement {
     slug,
     id,
   );
+  /** Every table names its players by DEFAULT (owner 2026-08-29): a
+   * standings row is a school and a suffix ("Grace Academy TT-1"), and who
+   * that actually is — the pair, the singles player — is the question the
+   * table is read for. So the rosters are read with the page; each category
+   * has its own switch to fold the sheets away. Handed over once settled, so
+   * an empty index mid-flight never prints "No team sheet" under every row. */
+  const { rosters, settled: rostersSettled } = usePublicRosters(slug, id, true);
 
   const tournamentName = scheduleQ.data?.tournament.name;
   useEffect(() => {
@@ -277,41 +288,12 @@ export function PublicStandingsPage(): React.ReactElement {
                       </h2>
                     ) : null}
                     {comps.map((c) => (
-                      <div
+                      <CompetitionBlock
                         key={c.key}
-                        data-testid={`standings-comp-${c.key}`}
-                        className="flex flex-col overflow-hidden border-y border-border sm:rounded-lg sm:border"
-                      >
-                        {/* Each category is its OWN titled block: a real
-                            heading on a tinted band, not tiny chips. */}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-muted/60 px-3 py-2 sm:px-4 sm:py-2.5">
-                          <h3 className="text-[0.8125rem] font-semibold sm:text-sm">
-                            {compName(c)}
-                          </h3>
-                          <span className="font-tabular text-xs text-muted-foreground">
-                            {c.groups.length}{" "}
-                            {c.groups.length === 1 ? t("group") : t("groups")}
-                          </span>
-                        </div>
-                        {/* On a phone the tables run edge to edge: a long
-                            school name stays on one line and the table
-                            scrolls sideways instead of wrapping to four. */}
-                        <div className="grid grid-cols-1 items-start gap-x-6 gap-y-3 py-2 sm:gap-y-5 sm:p-4 xl:grid-cols-2">
-                          {c.groups.map((g) => (
-                            <div key={g.key} className="flex min-w-0 flex-col">
-                              <h4 className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-primary sm:px-0">
-                                {g.label}
-                              </h4>
-                              <div className="min-w-0 overflow-hidden border-y border-border sm:rounded-lg sm:border">
-                                <GroupTable
-                                  rows={g.standing!.rows}
-                                  family={c.family}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                        comp={c}
+                        name={compName(c)}
+                        rosters={rostersSettled ? rosters : undefined}
+                      />
                     ))}
                   </section>
                 ))}
@@ -389,6 +371,69 @@ export function PublicStandingsPage(): React.ReactElement {
           </div>
         </Dialog>
       </main>
+    </div>
+  );
+}
+
+/**
+ * One category's tables under its own titled band. The band carries the
+ * category's Player names switch (the court board's pattern: each sheet has
+ * its own), ON by default; off folds only this category's team sheets away.
+ */
+function CompetitionBlock({
+  comp: c,
+  name,
+  rosters,
+}: {
+  comp: Competition;
+  name: string;
+  /** Undefined until the roster read has settled. */
+  rosters: RosterIndex | undefined;
+}): React.ReactElement {
+  const [namesOn, setNamesOn] = useState(true);
+  const sheetFor =
+    namesOn && rosters
+      ? (teamId: string) => <TeamSheet players={rosters.get(teamId)} />
+      : undefined;
+  return (
+    <div
+      data-testid={`standings-comp-${c.key}`}
+      className="flex flex-col overflow-hidden border-y border-border sm:rounded-lg sm:border"
+    >
+      {/* Each category is its OWN titled block: a real heading on a tinted
+          band, not tiny chips. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-muted/60 px-3 py-2 sm:px-4 sm:py-2.5">
+        <h3 className="text-[0.8125rem] font-semibold sm:text-sm">{name}</h3>
+        <span className="font-tabular text-xs text-muted-foreground">
+          {c.groups.length} {c.groups.length === 1 ? t("group") : t("groups")}
+        </span>
+        <span className="ml-auto print:hidden">
+          <NamesToggle
+            on={namesOn}
+            onChange={setNamesOn}
+            testid={`standings-names-toggle-${c.key}`}
+          />
+        </span>
+      </div>
+      {/* On a phone the tables run edge to edge: a long school name stays on
+          one line and the table scrolls sideways instead of wrapping to
+          four. */}
+      <div className="grid grid-cols-1 items-start gap-x-6 gap-y-3 py-2 sm:gap-y-5 sm:p-4 xl:grid-cols-2">
+        {c.groups.map((g) => (
+          <div key={g.key} className="flex min-w-0 flex-col">
+            <h4 className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-primary sm:px-0">
+              {g.label}
+            </h4>
+            <div className="min-w-0 overflow-hidden border-y border-border sm:rounded-lg sm:border">
+              <GroupTable
+                rows={g.standing!.rows}
+                family={c.family}
+                sheetFor={sheetFor}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
