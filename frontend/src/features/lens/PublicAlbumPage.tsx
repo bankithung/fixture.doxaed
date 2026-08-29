@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ScanLine,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { lensApi, type PublicAlbumPhoto } from "@/api/lens";
@@ -19,6 +20,7 @@ import { ThemeToggle } from "@/features/theme/ThemeToggle";
 import { FilterFab } from "@/features/fixtures/publicTournamentViews";
 import { InfiniteWall } from "./InfiniteWall";
 import { QrScanDialog } from "./QrScanDialog";
+import { ZoomableImage } from "./ZoomableImage";
 import { qk } from "@/lib/queryKeys";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/tailwind";
@@ -212,6 +214,24 @@ export function AlbumPanel({
 
   const openIdx = viewables.findIndex((v) => v.ref === openRef);
   const open = openIdx >= 0 ? viewables[openIdx] : null;
+  /** Step to another picture in the list on screen; off either end is a
+   * no-op, so a swipe past the last photo does not close the viewer. */
+  const goTo = useCallback(
+    (idx: number) => {
+      const next = viewables[idx];
+      if (next) setOpenRef(next.ref);
+    },
+    [viewables],
+  );
+  useEffect(() => {
+    if (openIdx < 0) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "ArrowRight") goTo(openIdx + 1);
+      else if (e.key === "ArrowLeft") goTo(openIdx - 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openIdx, goTo]);
 
   useEffect(() => {
     if (!open) return;
@@ -665,52 +685,78 @@ export function AlbumPanel({
 
       {/* The viewer. Every picture on the page opens here and carries what
           was written about it: its caption, the story it belongs to and that
-          story's description (owner 2026-08-26). */}
+          story's description (owner 2026-08-26).
+
+          It is built like Instagram's, because that is the viewer every
+          visitor already knows (owner 2026-08-29): the whole screen on a
+          phone with the words under the picture, a big dark stage beside a
+          caption column on a desk. The picture is as large as the screen
+          allows and can be pinched, wheeled or double-tapped closer; a swipe
+          or the arrow keys walk the album. */}
       <Dialog
         open={open !== null}
         onOpenChange={(o) => {
           if (!o) setOpenRef(null);
         }}
+        variant="viewer"
         ariaLabel={t("Photo viewer")}
       >
         {open ? (
-          <div className="flex flex-col gap-3" data-testid="album-lightbox">
-            <div className="relative">
-              <img
+          <div
+            className="flex h-full w-full flex-col sm:flex-row"
+            data-testid="album-lightbox"
+          >
+            <div className="relative flex min-h-0 flex-1 basis-0 bg-black">
+              <ZoomableImage
+                key={open.ref}
                 src={open.url}
                 alt={open.caption || open.storyTitle || open.school}
-                className="max-h-[62vh] w-full rounded-md bg-muted object-contain"
+                onSwipe={(dir) => goTo(openIdx + dir)}
               />
+              <button
+                type="button"
+                aria-label={t("Close")}
+                data-testid="lightbox-close"
+                onClick={() => setOpenRef(null)}
+                className="absolute left-3 top-3 grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                <X aria-hidden="true" className="h-5 w-5" />
+              </button>
               {viewables.length > 1 ? (
                 <>
+                  <span
+                    data-testid="lightbox-counter"
+                    className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-black/55 px-2.5 py-1 font-tabular text-xs text-white backdrop-blur"
+                  >
+                    {openIdx + 1} / {viewables.length}
+                  </span>
                   <button
                     type="button"
                     aria-label={t("Previous photo")}
                     data-testid="lightbox-prev"
                     disabled={openIdx <= 0}
-                    onClick={() => setOpenRef(viewables[openIdx - 1]?.ref ?? null)}
-                    className="absolute left-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-background/85 text-foreground shadow-sm backdrop-blur hover:bg-background disabled:pointer-events-none disabled:opacity-0"
+                    onClick={() => goTo(openIdx - 1)}
+                    className="absolute left-2 top-1/2 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 disabled:pointer-events-none disabled:opacity-0 sm:grid"
                   >
-                    <ChevronLeft aria-hidden="true" className="h-5 w-5" />
+                    <ChevronLeft aria-hidden="true" className="h-6 w-6" />
                   </button>
                   <button
                     type="button"
                     aria-label={t("Next photo")}
                     data-testid="lightbox-next"
                     disabled={openIdx >= viewables.length - 1}
-                    onClick={() => setOpenRef(viewables[openIdx + 1]?.ref ?? null)}
-                    className="absolute right-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-background/85 text-foreground shadow-sm backdrop-blur hover:bg-background disabled:pointer-events-none disabled:opacity-0"
+                    onClick={() => goTo(openIdx + 1)}
+                    className="absolute right-2 top-1/2 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 disabled:pointer-events-none disabled:opacity-0 sm:grid"
                   >
-                    <ChevronRight aria-hidden="true" className="h-5 w-5" />
+                    <ChevronRight aria-hidden="true" className="h-6 w-6" />
                   </button>
-                  <span className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-background/85 px-2 py-0.5 font-tabular text-[0.6875rem] text-muted-foreground backdrop-blur">
-                    {openIdx + 1} / {viewables.length}
-                  </span>
                 </>
               ) : null}
             </div>
 
-            <div className="flex flex-col gap-1.5">
+            {/* The words: under the picture on a phone (a third of the screen
+                at most, scrolling), a column beside it on a desk. */}
+            <aside className="flex max-h-[36vh] shrink-0 flex-col gap-1.5 overflow-y-auto border-t border-border bg-card p-4 sm:max-h-none sm:w-80 sm:border-l sm:border-t-0 lg:w-96">
               <div className="flex flex-wrap items-center gap-2">
                 {open.storyTitle ? (
                   <h2 className="text-base font-semibold">{open.storyTitle}</h2>
@@ -727,16 +773,24 @@ export function AlbumPanel({
                   </span>
                 ) : null}
               </div>
-              <p className="text-sm text-muted-foreground">{open.school}</p>
+              <p className="text-sm font-medium">{open.school}</p>
               {open.storyDescription ? (
-                <p className="text-sm leading-relaxed">{open.storyDescription}</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {open.storyDescription}
+                </p>
               ) : null}
               {open.caption ? (
                 <p className="border-t border-border pt-2 text-sm leading-relaxed">
                   {open.caption}
                 </p>
               ) : null}
-            </div>
+              <p className="mt-auto pt-3 text-[0.6875rem] text-muted-foreground sm:hidden">
+                {t("Pinch to zoom · swipe for the next photo")}
+              </p>
+              <p className="mt-auto hidden pt-3 text-[0.6875rem] text-muted-foreground sm:block">
+                {t("Scroll or double-click to zoom · ← → for the next photo")}
+              </p>
+            </aside>
           </div>
         ) : null}
       </Dialog>

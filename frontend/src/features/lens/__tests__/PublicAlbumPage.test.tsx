@@ -196,6 +196,25 @@ describe("PublicAlbumPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("is a full-stage viewer: zoomable picture, close, counter, arrow keys", async () => {
+    mount();
+    await userEvent.click(await screen.findByTestId("album-photo-r3"));
+    const box = screen.getByTestId("album-lightbox");
+    // The picture is the zoomable stage, not a thumbnail in a card.
+    expect(within(box).getByTestId("zoomable-image")).toBeInTheDocument();
+    expect(within(box).getByTestId("lightbox-counter")).toHaveTextContent("/");
+    expect(within(box).getByText("Pine Academy")).toBeInTheDocument();
+
+    // Arrow keys walk the same list the arrows do.
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(
+      within(screen.getByTestId("album-lightbox")).getByText("Grace School"),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("lightbox-close"));
+    expect(screen.queryByTestId("album-lightbox")).toBeNull();
+  });
+
   it("shows the award winners strip with category and school", async () => {
     mount();
 

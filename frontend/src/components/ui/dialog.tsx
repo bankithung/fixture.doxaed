@@ -21,8 +21,11 @@ export interface DialogProps {
    *  inside wants room and the list behind it is worth keeping in view.
    *  "drawer" is the reading drawer: a bottom sheet on a phone (where the
    *  reachable edge is the bottom one) that becomes a 70%-wide right-hand
-   *  drawer from `md` up. Use it for detail ABOUT a row the list still shows. */
-  variant?: "center" | "sheet" | "side" | "drawer";
+   *  drawer from `md` up. Use it for detail ABOUT a row the list still shows.
+   *  "viewer" is the photo stage: the whole screen on a phone, a big dark
+   *  panel on a desk, no padding or card of its own — the picture is the
+   *  panel. The content lays itself out inside (owner 2026-08-29). */
+  variant?: "center" | "sheet" | "side" | "drawer" | "viewer";
   children: React.ReactNode;
 }
 
@@ -110,6 +113,8 @@ export function Dialog({
         variant === "drawer" &&
           "items-end justify-center md:items-stretch md:justify-end",
         variant === "center" && "items-center justify-center p-4",
+        variant === "viewer" &&
+          "items-stretch justify-center bg-black/95 p-0 sm:items-center sm:p-6",
       )}
       onClick={(e) => {
         if (e.target === e.currentTarget) onOpenChange(false);
@@ -128,6 +133,8 @@ export function Dialog({
           variant === "drawer" &&
             "flex max-h-[88vh] flex-col overflow-hidden rounded-t-2xl border-x-0 border-b-0 motion-safe:animate-slide-in-up " +
               "md:h-full md:max-h-none md:w-[70%] md:rounded-none md:border-y-0 md:border-r-0 md:motion-safe:animate-slide-in-right",
+          variant === "viewer" &&
+            "h-full max-w-none overflow-hidden border-0 bg-black shadow-none sm:h-[92vh] sm:max-w-[88rem] sm:rounded-xl",
         )}
       >
         {children}
