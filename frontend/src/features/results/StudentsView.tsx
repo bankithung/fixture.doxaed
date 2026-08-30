@@ -40,6 +40,13 @@ function Events({
           {e.place ? (
             <MedalChip place={e.place} label={e.place_label} size="sm" />
           ) : null}
+          {/* The sport is on the chip, not only in the tooltip: a two-sport
+              meet has a "U-14 · Girls" in table tennis AND in sepaktakraw,
+              and a phone has no hover to tell them apart (owner 2026-08-30). */}
+          <span className="max-w-[8rem] truncate font-semibold">{e.sport_name}</span>
+          <span aria-hidden="true" className="text-muted-foreground">
+            ·
+          </span>
           <span className="max-w-[12rem] truncate">{e.label}</span>
         </span>
       ))}

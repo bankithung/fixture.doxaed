@@ -234,6 +234,10 @@ describe("PublicResultsPage", () => {
     expect(within(row).getByText("Imli Jamir")).toBeInTheDocument();
     expect(within(row).getByText("U-14 · Boys · Singles")).toBeInTheDocument();
     expect(within(row).getByText("U-14 · Boys")).toBeInTheDocument();
+    // The sport is printed on each chip, so two same-named categories in
+    // different sports are told apart without a hover.
+    expect(within(row).getByText("Table Tennis")).toBeInTheDocument();
+    expect(within(row).getByText("Sepak Takraw")).toBeInTheDocument();
   });
 
   it("says a competition is still playing rather than pretending it is done", async () => {
