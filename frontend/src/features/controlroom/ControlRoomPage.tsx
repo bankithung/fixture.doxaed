@@ -39,6 +39,7 @@ import {
   SuspensionsPanel,
 } from "./TodayWidgets";
 import { useControlRoom } from "./useControlRoom";
+import { printPage } from "@/lib/print";
 
 /** A scheduled match whose kickoff slot has passed but still has no result —
  * "awaiting result" in the ops band. Kept a plain helper so the wall-clock read
@@ -821,7 +822,7 @@ export function ControlRoomPage(): React.ReactElement {
             <button
               type="button"
               data-testid="print-day-sheet"
-              onClick={() => window.print()}
+              onClick={() => void printPage()}
               className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Printer aria-hidden="true" className="h-3.5 w-3.5" />

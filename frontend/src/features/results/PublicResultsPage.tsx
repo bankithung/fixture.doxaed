@@ -33,6 +33,7 @@ import {
   type StudentSort,
   type TallySort,
 } from "./resultsMatrix";
+import { printPage } from "@/lib/print";
 
 /**
  * Public RESULTS tab — the medal tally.
@@ -343,7 +344,7 @@ export function PublicResultsPage(): React.ReactElement {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => window.print()}
+                onClick={() => void printPage()}
                 data-testid="results-print"
               >
                 <Printer className="mr-1.5 h-4 w-4" />

@@ -13,6 +13,7 @@ import { matchNumbers } from "@/features/fixtures/publicTournament";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
 import { humanizeLeaf } from "@/features/controlroom/format";
+import { printPage } from "@/lib/print";
 
 /**
  * Operations — **Fixture versions**. Every fixture this tournament has had.
@@ -236,7 +237,7 @@ export function FixtureVersionsPage(): React.ReactElement {
             </span>
           ) : null}
           <span className="ml-auto flex items-center gap-1">
-            <Button size="sm" variant="outline" onClick={() => window.print()}>
+            <Button size="sm" variant="outline" onClick={() => void printPage()}>
               <Printer aria-hidden className="h-3.5 w-3.5" />
               {t("Print")}
             </Button>

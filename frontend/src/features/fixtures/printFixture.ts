@@ -9,6 +9,7 @@
  * for the duration of ONE print and removed again on `afterprint`.
  */
 import { t } from "@/lib/t";
+import { loadLazyImages } from "@/lib/print";
 
 /**
  * Which passes of a fixture go on paper. `teams` is the order of play as the
@@ -81,5 +82,5 @@ export function printLandscape(title?: string): void {
   // leave every later print landscape.
   window.setTimeout(cleanup, 120_000);
 
-  window.print();
+  void loadLazyImages().then(() => window.print());
 }

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Award, Printer } from "lucide-react";
 import { api } from "@/api/client";
 import { t } from "@/lib/t";
+import { printPage } from "@/lib/print";
 
 interface AwardData {
   id: string;
@@ -82,7 +83,7 @@ export function CertificatePage(): React.ReactElement {
           </Link>
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => void printPage()}
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium hover:bg-accent"
           >
             <Printer aria-hidden="true" className="h-4 w-4" />

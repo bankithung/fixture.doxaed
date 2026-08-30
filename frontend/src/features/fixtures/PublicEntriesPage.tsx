@@ -31,6 +31,7 @@ import {
   type MatrixColumn,
   type SortKey,
 } from "./entriesMatrix";
+import { printPage } from "@/lib/print";
 
 /**
  * Public ENTRIES tab — who is in what.
@@ -318,7 +319,7 @@ export function PublicEntriesPage(): React.ReactElement {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => window.print()}
+                  onClick={() => void printPage()}
                   data-testid="entries-print"
                 >
                   <Printer className="mr-1.5 h-4 w-4" />

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/tailwind";
 import { t } from "@/lib/t";
+import { printPage } from "@/lib/print";
 
 /** What a school does with the card, in the order it happens. Shown next to
  * the QR so the manager can check the poster says the same thing. */
@@ -138,7 +139,7 @@ export function ShareCardStrip({
         <div className="flex shrink-0 flex-wrap items-center gap-2 sm:ml-auto">
           {card ? (
             <>
-              <Button size="sm" onClick={() => window.print()} data-testid="print-cards-btn">
+              <Button size="sm" onClick={() => void printPage()} data-testid="print-cards-btn">
                 <Printer aria-hidden="true" className="h-4 w-4" />
                 {t("Print poster")}
               </Button>

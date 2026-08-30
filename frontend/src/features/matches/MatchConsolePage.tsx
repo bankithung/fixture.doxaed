@@ -42,6 +42,7 @@ import { LineupPanel } from "./LineupPanel";
 import { PreMatchGate } from "./PreMatchGate";
 import { resolveConsole } from "./console/registry";
 import { competitionLabel, statusMeta } from "./console/shared";
+import { printPage } from "@/lib/print";
 
 const STATE_ACTIONS: Record<string, { label: string; to: string }[]> = {
   // `scheduled` is deliberately empty: starting a match now goes through the
@@ -438,7 +439,7 @@ export function MatchConsolePage(): React.ReactElement {
       variant="outline"
       data-testid="print-match-report"
       className="shrink-0"
-      onClick={() => window.print()}
+      onClick={() => void printPage()}
     >
       <Printer aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
       {t("Print match report")}
